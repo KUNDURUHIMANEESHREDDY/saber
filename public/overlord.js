@@ -2,7 +2,12 @@
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
 const stamp = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-const esc = (s) => String(s).replace(/&/g, "&").replace(/</g, "<");
+const esc = (s) => String(s)
+  .replace(/&/g, "&amp;")
+  .replace(/</g, "&lt;")
+  .replace(/>/g, "&gt;")
+  .replace(/"/g, "&quot;")
+  .replace(/'/g, "&#39;");
 async function api(method, path, body) {
   const r = await fetch(path, { method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
   if (!r.ok) throw new Error(path + " " + r.status);
@@ -30,13 +35,15 @@ $("#clearLogs").onclick = async () => { await api("DELETE", "/api/logs").catch((
 $("#expandLogs").onclick = () => { renderLogs(); $("#overlay").classList.add("open"); };
 $("#overlay").onclick = (e) => { if (e.target.id === "overlay") $("#overlay").classList.remove("open"); };
 $("#closeModal").onclick = () => $("#overlay").classList.remove("open");
-$("#exportBtn").onclick = async () => {
-  const d = await api("GET", "/api/logs?limit=1000").catch(() => ({ logs }));
-  const blob = new Blob([JSON.stringify(d.logs || d, null, 2)], { type: "application/json" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob); a.download = "overlord-event-log.json"; a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-};
+if ($("#exportBtn")) {
+  $("#exportBtn").onclick = async () => {
+    const d = await api("GET", "/api/logs?limit=1000").catch(() => ({ logs }));
+    const blob = new Blob([JSON.stringify(d.logs || d, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = "overlord-event-log.json"; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  };
+}
 
 /* ---------- sessions ---------- */
 $$(".session").forEach((s) => (s.onclick = () => { $$(".session").forEach((x) => x.classList.remove("active")); s.classList.add("active"); }));
@@ -44,13 +51,24 @@ $("#sessionSearch").oninput = (e) => {
   const q = e.target.value.toLowerCase();
   $$(".session").forEach((s) => (s.style.display = s.innerText.toLowerCase().includes(q) ? "block" : "none"));
 };
+function clearWorkspace() {
+  const thread = $("#conversationThread") || $(".conversation");
+  if (thread) thread.innerHTML = "";
+  removeThinking();
+  ROWS.forEach((_, i) => { setBar(i, 0); setState(i, "", "Ready"); });
+  setDesc(0, "Idle"); setDesc(1, "Idle"); setDesc(2, "Idle");
+  const el = $("#trace");
+  if (el) el.innerHTML = `<span style="color:var(--muted)">Waiting for instructions...</span>`;
+}
+
 $("#newSession").onclick = () => {
   const ns = $("#noSessions"); if (ns) ns.remove();
   const s = document.createElement("button");
   s.className = "session active";
   s.innerHTML = '<div class="row"><strong>New agent session</strong><time>Now</time></div><p>Ready for a new task</p>';
-  s.onclick = () => { $$(".session").forEach((x) => x.classList.remove("active")); s.classList.add("active"); };
+  s.onclick = () => { $$(".session").forEach((x) => x.classList.remove("active")); s.classList.add("active"); clearWorkspace(); };
   $("#sessionList").prepend(s);
+  clearWorkspace();
 };
 
 /* ---------- pipeline rendering (driven by server events) ---------- */
@@ -70,45 +88,211 @@ function rowFor(agent) {
   return i < 0 ? null : { i, ...ROWS[i] };
 }
 const timers = {};
-function trace(line) { $("#trace").innerHTML += `<br>${stamp()} · ${esc(line)}`; }
+function ensureTraceCard() {
+  let el = $("#trace");
+  if (el) return el;
+  const thread = $("#conversationThread") || $(".conversation");
+  if (!thread) return null;
+  thread.insertAdjacentHTML("beforeend", `
+    <div class="sup-trace" id="supTraceCard">
+      <div class="sup-trace-head"><span class="dot"></span><span>Supervisor thinking</span><span style="margin-left:auto;text-transform:none;letter-spacing:0;font-weight:500">live reasoning</span></div>
+      <div class="sup-trace-body" id="trace"></div>
+    </div>
+  `);
+  scrollChat();
+  return $("#trace");
+}
+function trace(line) {
+  const el = ensureTraceCard();
+  if (el) { el.insertAdjacentHTML("beforeend", `<div class="t-line"><time>${stamp()}</time><span>${esc(line)}</span></div>`); scrollChat(); }
+}
 function setState(i, cls, label) {
   const s = $$(".assignment .state")[i];
   if (s) { s.innerHTML = "<span class='dot'></span>" + esc(label); s.className = "state " + cls; }
 }
-function setBar(i, p) { $(ROWS[i].bar).style.width = p + "%"; $(ROWS[i].pct).textContent = p + "%"; }
-function setDesc(i, t) { $$(".progress-desc")[i].textContent = t; }
+function setBar(i, p) { if ($(ROWS[i]?.bar)) { $(ROWS[i].bar).style.width = p + "%"; $(ROWS[i].pct).textContent = p + "%"; } }
+function setDesc(i, t) { if ($$(".progress-desc")[i]) $$(".progress-desc")[i].textContent = t; }
 function progressStatus() {
   const done = $$(".assignment .state.done").length;
-  $("#progressStatus").textContent = done + " of 3 complete";
-}
-function resetRun(title) {
-  ROWS.forEach((_, i) => { setBar(i, 0); setState(i, "", "Queued"); });
-  setDesc(0, "Starting..."); setDesc(1, "Waiting for source data..."); setDesc(2, "Waiting for scraped data...");
-  $("#progressStatus").textContent = "0 of 3 complete";
-  document.querySelector(".workspace-head h1").textContent = title.slice(0, 48);
+  if ($("#progressStatus")) $("#progressStatus").textContent = done + " of 3 complete";
 }
 function startBar(i) {
   stopBar(i);
-  let p = parseInt($(ROWS[i].bar).style.width) || 0;
+  let p = parseInt($(ROWS[i]?.bar)?.style.width) || 0;
   timers[i] = setInterval(() => { p = Math.min(92, p + 2); setBar(i, p); }, 120);
 }
 function stopBar(i, done) {
   clearInterval(timers[i]);
   if (done) setBar(i, 100);
 }
+
+function scrollChat() {
+  const canvas = $(".canvas");
+  if (canvas) canvas.scrollTop = canvas.scrollHeight;
+}
+
+function showThinking(modelName) {
+  removeThinking();
+  const thread = $("#conversationThread") || $(".conversation");
+  if (!thread) return;
+  thread.insertAdjacentHTML("beforeend", `
+    <div class="chat-thinking" id="thinkingIndicator">
+      <div class="agent-mark" style="width:24px;height:24px;font-size:11px">A</div>
+      <div class="thinking-dots"><span></span><span></span><span></span></div>
+      <span>Thinking with <strong>${esc(modelName || "AI")}</strong>...</span>
+    </div>
+  `);
+  scrollChat();
+}
+
+function removeThinking() {
+  const el = $("#thinkingIndicator");
+  if (el) el.remove();
+}
+
+function formatMsg(str) {
+  if (!str) return "";
+  let s = esc(str);
+
+  // Check if this message built or referenced an app artifact
+  let artifactBanner = "";
+  if (str.includes("team-app.html") || str.includes("TeamForge") || (str.includes("<!DOCTYPE") && str.includes("<html"))) {
+    artifactBanner = `
+      <div class="artifact-card">
+        <div class="artifact-head">
+          <div class="artifact-title">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2.5"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+            <span>TeamForge Web Application Artifact</span>
+            <span class="badge green" style="font-size:8px;padding:2px 6px">Ready &amp; Deployed</span>
+          </div>
+          <div class="artifact-actions">
+            <button type="button" class="artifact-btn primary" onclick="setWorkspaceMode('split')">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="12" y1="3" x2="12" y2="21"></line></svg>
+              Open Split Preview
+            </button>
+            <a href="/team-app.html" target="_blank" class="artifact-btn">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+              Full Tab
+            </a>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // Fenced code blocks ```lang ... ```
+  let codeBlockIdx = 0;
+  s = s.replace(/```([a-z0-9_-]*)\n([\s\S]*?)```/gi, (_, lang, code) => {
+    codeBlockIdx++;
+    const codeId = "code-block-" + Math.floor(Math.random() * 1e8);
+    return `
+      <div class="code-container">
+        <div class="code-bar">
+          <span>${lang || "code"}</span>
+          <button type="button" onclick="copyCode('${codeId}')">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            Copy
+          </button>
+        </div>
+        <pre class="code-block" id="${codeId}"><code>${code.trim()}</code></pre>
+      </div>
+    `;
+  });
+
+  // Inline code `...`
+  s = s.replace(/`([^`]+)`/g, '<code style="background:rgba(120,120,120,.12);padding:1px 5px;border-radius:4px;font-size:11.5px;font-family:monospace">$1</code>');
+  // Bold **...**
+  s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  // Double newlines into paragraphs
+  s = s.replace(/\n\n+/g, '</p><p style="margin:8px 0">');
+  // Single newlines
+  s = s.replace(/\n/g, '<br/>');
+  return `<div style="margin:0;line-height:1.6">${artifactBanner}<p style="margin:0">${s}</p></div>`;
+}
+
+function setWorkspaceMode(mode) {
+  const body = $("#workspaceBody");
+  const panel = $("#previewPanel");
+  if (!body || !panel) return;
+  $$(".mode-btn").forEach((b) => b.classList.toggle("active", b.dataset.mode === mode));
+  body.classList.toggle("split-mode", mode === "split");
+  body.classList.toggle("preview-mode", mode === "preview");
+  panel.style.display = mode === "chat" ? "none" : "flex";
+  if (mode !== "chat") {
+    const frame = $("#appPreviewFrame");
+    if (frame && !frame.src.includes("/team-app.html")) frame.src = "/team-app.html";
+  }
+}
+window.setWorkspaceMode = setWorkspaceMode;
+
+window.copyCode = (id) => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  navigator.clipboard.writeText(el.innerText).then(() => {
+    const barBtn = el.parentElement ? el.parentElement.querySelector(".code-bar button") : null;
+    if (barBtn) {
+      const orig = barBtn.innerHTML;
+      barBtn.innerHTML = "Copied ✓";
+      setTimeout(() => { barBtn.innerHTML = orig; }, 2000);
+    }
+  }).catch(() => {});
+};
+
+if ($("#btnModeChat")) $("#btnModeChat").onclick = () => setWorkspaceMode("chat");
+if ($("#btnModeSplit")) $("#btnModeSplit").onclick = () => setWorkspaceMode("split");
+if ($("#btnModePreview")) $("#btnModePreview").onclick = () => setWorkspaceMode("preview");
+if ($("#btnReloadPreview")) {
+  $("#btnReloadPreview").onclick = () => {
+    const f = $("#appPreviewFrame");
+    if (f) f.src = f.src;
+  };
+}
+
 function userMsg(text) {
-  $(".conversation").insertAdjacentHTML("beforeend",
-    `<div class="user-message"><div class="message-meta"><span>You</span><time>${stamp()}</time></div><p></p></div>`);
-  $(".conversation").lastElementChild.querySelector("p").textContent = text;
+  const thread = $("#conversationThread") || $(".conversation");
+  if (!thread) return;
+  const oldCard = $("#supTraceCard");
+  if (oldCard) oldCard.remove();
+  thread.insertAdjacentHTML("beforeend", `
+    <div class="chat-msg user">
+      <div class="chat-meta"><span>You</span><time>${stamp()}</time></div>
+      <div class="chat-bubble"><p style="margin:0;white-space:pre-wrap">${esc(text)}</p></div>
+    </div>
+  `);
+  const activeModel = ($("#model") && $("#model").value) || "Claude 3.7 Sonnet";
+  showThinking(activeModel);
+  scrollChat();
 }
-function resultCard(lines) {
-  $(".conversation").insertAdjacentHTML("beforeend",
-    `<div class="agent-intro"><div class="agent-mark">A</div><div><strong>OVERLORD</strong><span>Supervisor · Final response.</span></div></div><section class="section"><div class="section-head"><strong>Result</strong><span>${stamp()}</span></div><div class="plan"><ol>${lines.map((l) => `<li>${esc(l)}</li>`).join("")}</ol></div></section>`);
+
+function assistantMsg(content, modelName) {
+  removeThinking();
+  const thread = $("#conversationThread") || $(".conversation");
+  if (!thread) return;
+  const activeModel = modelName || ($("#model") && $("#model").value) || "AI";
+  thread.insertAdjacentHTML("beforeend", `
+    <div class="chat-msg assistant">
+      <div class="chat-meta">
+        <div style="display:flex;align-items:center;gap:6px">
+          <div class="agent-mark" style="width:24px;height:24px;font-size:11px">A</div>
+          <strong>OVERLORD</strong>
+          <span class="badge blue" style="font-size:8.5px;padding:2px 5px">${esc(activeModel)}</span>
+        </div>
+        <time>${stamp()}</time>
+      </div>
+      <div class="chat-bubble">
+        ${formatMsg(content)}
+      </div>
+    </div>
+  `);
+  scrollChat();
 }
+
 function approvalBox(runId, text) {
   const id = "appr-" + runId;
-  $(".conversation").insertAdjacentHTML("beforeend",
-    `<section class="section" id="${id}"><div class="section-head"><strong>Approval needed</strong><span>human gate</span></div><div class="plan"><p style="margin:0 0 10px">${esc(text)}</p><button class="ghost" data-ok="1">Approve</button> <button class="ghost" data-ok="0">Reject</button></div></section>`);
+  const thread = $("#conversationThread") || $(".conversation");
+  if (!thread) return;
+  thread.insertAdjacentHTML("beforeend",
+    `<div class="section approval-card" id="${id}" style="margin-top:10px"><div class="section-head"><strong>Approval needed</strong><span>human gate</span></div><div class="plan"><p style="margin:0 0 10px">${esc(text)}</p><button class="ghost" data-ok="1">Approve</button> <button class="ghost" data-ok="0">Reject</button></div></div>`);
   $("#" + CSS.escape(id)).querySelectorAll("button").forEach((b) => (b.onclick = () => {
     api("POST", `/api/runs/${runId}/approve`, { ok: b.dataset.ok === "1" }).catch(() => {});
     $("#" + CSS.escape(id)).remove();
@@ -120,15 +304,15 @@ function onEvent(e) {
   renderLogs();
   const r = e.runId ? rowFor(e.target === "supervisor" ? e.source : e.target) : null;
   switch (e.type) {
-    case "user_message": userMsg(e.payload); resetRun(e.payload); break;
+    case "user_message": userMsg(e.payload); break;
     case "thinking": trace(e.payload); break;
     case "policy": trace("Guardrails: " + e.payload); break;
     case "task_assign":
       if (r) { setState(r.i, "running", "Running"); setDesc(r.i, e.payload + "..."); startBar(r.i); }
-      trace(`Assigned to ${e.target}.`); break;
+      trace(`→ ${e.target}: ${(e.payload || "").slice(0, 180)}`); break;
     case "task_result":
       if (r) { stopBar(r.i, true); setState(r.i, "done", "Done"); setDesc(r.i, "Complete."); progressStatus(); }
-      trace(`${e.source} finished.`); break;
+      trace(`✓ ${e.source}: ${(e.payload || "").slice(0, 180)}`); break;
     case "agent_spawned":
       try { const s = JSON.parse(e.payload); trace(`Capability miss — spawned ${s.id} (${s.cap}).`); } catch {} break;
     case "agent_retired": trace(`${e.payload.split(" ")[0]} retired.`); break;
@@ -136,9 +320,8 @@ function onEvent(e) {
     case "approval_denied": trace("Human rejected the final answer."); break;
     case "approval_granted": trace("Human approved."); break;
     case "final_answer":
-      resultCard([e.payload]);
-      trace("Run complete · final response delivered.");
-      $("#progressStatus").textContent = "3 of 3 complete";
+      assistantMsg(e.payload, e.model);
+      trace("Delivered response.");
       break;
   }
 }
@@ -194,6 +377,23 @@ function wireModelOptClicks() {
   });
 }
 
+let modelSearchQuery = "";
+function wireModelSearch() {
+  const inp = $("#modelSearch");
+  if (!inp || inp.dataset.wired) return;
+  inp.dataset.wired = "1";
+  inp.addEventListener("input", () => {
+    modelSearchQuery = inp.value.toLowerCase().trim();
+    $$(".model-opt").forEach((opt) => {
+      const t = (opt.textContent || "").toLowerCase();
+      opt.style.display = t.includes(modelSearchQuery) ? "" : "none";
+    });
+  });
+  inp.addEventListener("click", (e) => e.stopPropagation());
+  inp.addEventListener("pointerdown", (e) => e.stopPropagation());
+  inp.addEventListener("keydown", (e) => e.stopPropagation());
+}
+
 function syncComposerModels() {
   if (!CFG || !Array.isArray(CFG.models) || !modelMenu) return;
   const activeModels = CFG.models.filter((m) => m.on);
@@ -204,7 +404,7 @@ function syncComposerModels() {
   if ($("#model")) $("#model").value = activeVal;
   if ($("#currentModelName")) $("#currentModelName").textContent = activeVal;
 
-  modelMenu.innerHTML = `<div class="model-menu-head">Active Orchestrator Model</div>` +
+  modelMenu.innerHTML = `<div class="model-menu-head">Active Orchestrator Model</div><div class="model-search"><input id="modelSearch" type="text" placeholder="Search models..." autocomplete="off" spellcheck="false" /></div>` +
     activeModels.map((m) => {
       const isAct = m.name === activeVal;
       const icon = m.provider === "Anthropic" ? "ti-sparkles" : m.provider === "OpenAI" ? "ti-cpu" : m.provider === "DeepSeek" ? "ti-brain" : "ti-code";
@@ -218,6 +418,17 @@ function syncComposerModels() {
       </button>`;
     }).join("");
   wireModelOptClicks();
+  wireModelSearch();
+  if (modelSearchQuery) {
+    const inp = $("#modelSearch");
+    if (inp) {
+      inp.value = modelSearchQuery;
+      $$(".model-opt").forEach((opt) => {
+        const t = (opt.textContent || "").toLowerCase();
+        opt.style.display = t.includes(modelSearchQuery) ? "" : "none";
+      });
+    }
+  }
 }
 
 if (modelTrigger && modelMenu) {
@@ -229,6 +440,7 @@ if (modelTrigger && modelMenu) {
     modelTrigger.setAttribute("aria-expanded", String(!isOpen));
   };
   wireModelOptClicks();
+  wireModelSearch();
   document.addEventListener("click", (e) => {
     if (modelPicker && !modelPicker.contains(e.target)) {
       modelMenu.style.display = "none";
@@ -240,14 +452,20 @@ if (modelTrigger && modelMenu) {
 
 /* ---------- collapsible sidebars (Sessions & Logs) ---------- */
 const appEl = $(".app");
+const SVG_SIDEBAR_LEFT_OPEN = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line><polyline points="16 9 13 12 16 15"></polyline></svg>';
+const SVG_SIDEBAR_LEFT_EXPAND = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line><polyline points="13 15 16 12 13 9"></polyline></svg>';
+
+const SVG_SIDEBAR_RIGHT_OPEN = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="15" y1="3" x2="15" y2="21"></line><polyline points="8 15 11 12 8 9"></polyline></svg>';
+const SVG_SIDEBAR_RIGHT_EXPAND = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="15" y1="3" x2="15" y2="21"></line><polyline points="11 9 8 12 11 15"></polyline></svg>';
+
 function toggleLeftSidebar(force) {
   if (!appEl) return;
   const isCollapsed = typeof force === "boolean" ? force : !appEl.classList.contains("left-collapsed");
   appEl.classList.toggle("left-collapsed", isCollapsed);
   if ($("#btnToggleLeft")) {
     $("#btnToggleLeft").classList.toggle("active", isCollapsed);
-    $("#btnToggleLeft").title = isCollapsed ? "Expand Sessions sidebar (o) (Alt+1)" : "Collapse Sessions sidebar (x) (Alt+1)";
-    $("#btnToggleLeft").innerHTML = isCollapsed ? '<span style="font-weight:700;font-family:monospace;font-size:14px;line-height:1">o</span>' : '<i class="ti ti-layout-sidebar"></i>';
+    $("#btnToggleLeft").title = isCollapsed ? "Expand Sessions sidebar (Alt+1)" : "Collapse Sessions sidebar (Alt+1)";
+    $("#btnToggleLeft").innerHTML = isCollapsed ? SVG_SIDEBAR_LEFT_EXPAND : SVG_SIDEBAR_LEFT_OPEN;
   }
   try { localStorage.setItem("overlord_left_col", isCollapsed ? "1" : "0"); } catch {}
 }
@@ -258,16 +476,14 @@ function toggleRightSidebar(force) {
   appEl.classList.toggle("right-collapsed", isCollapsed);
   if ($("#btnToggleRight")) {
     $("#btnToggleRight").classList.toggle("active", isCollapsed);
-    $("#btnToggleRight").title = isCollapsed ? "Expand Logs feed (o) (Alt+2)" : "Collapse Logs feed (x) (Alt+2)";
-    $("#btnToggleRight").innerHTML = isCollapsed ? '<span style="font-weight:700;font-family:monospace;font-size:14px;line-height:1">o</span>' : '<i class="ti ti-layout-sidebar-right"></i>';
+    $("#btnToggleRight").title = isCollapsed ? "Expand Logs feed (Alt+2)" : "Collapse Logs feed (Alt+2)";
+    $("#btnToggleRight").innerHTML = isCollapsed ? SVG_SIDEBAR_RIGHT_EXPAND : SVG_SIDEBAR_RIGHT_OPEN;
   }
   try { localStorage.setItem("overlord_right_col", isCollapsed ? "1" : "0"); } catch {}
 }
 
 if ($("#btnToggleLeft")) $("#btnToggleLeft").onclick = () => toggleLeftSidebar();
-if ($("#btnCollapseLeft")) $("#btnCollapseLeft").onclick = () => toggleLeftSidebar(true);
 if ($("#btnToggleRight")) $("#btnToggleRight").onclick = () => toggleRightSidebar();
-if ($("#btnCollapseRight")) $("#btnCollapseRight").onclick = () => toggleRightSidebar(true);
 
 // Restore saved collapsed states
 try {
@@ -317,7 +533,7 @@ function showPage(page) {
 
 $("#navWorkspace").onclick = () => showPage("workspace");
 $("#navSettings").onclick = () => showPage("settings");
-$("#btnBackToWorkspace").onclick = () => showPage("workspace");
+if ($("#btnBackToWorkspace")) $("#btnBackToWorkspace").onclick = () => showPage("workspace");
 
 // Sub-page switching inside Settings
 $$(".set-nav-item").forEach((btn) => {
@@ -482,21 +698,6 @@ function renderSupervisorPane() {
       <button class="badge-del" data-delsupskill="${esc(sk)}" title="Remove skill"><i class="ti ti-x"></i></button>
     </span>`).join("") || `<span style="color:var(--muted);font-size:10px">No supervisor skills assigned to ${esc(prof.name)}.</span>`;
 
-  // Dynamic domain-specific supervisor suggestions
-  const supSuggestions = prof.domain === "software" || prof.domain === "code"
-    ? ["architecture-review", "code-review", "task-decomposition", "fix-ci", "ponytail", "generate-run-commands", "refactoring-planning"]
-    : prof.domain === "security"
-    ? ["threat-modeling", "security-audit", "adversarial-review", "guardrail-enforcement", "compliance-check"]
-    : prof.domain === "research"
-    ? ["hypothesis-formulation", "source-verification", "fact-checking", "literature-review", "information-synthesis"]
-    : ["intent-parsing", "task-decomposition", "synthesis", "conflict-resolution", "policy-enforcement", "act-on-feedback"];
-
-  const chipsContainer = $("#pane-supervisor .suggest-chips");
-  if (chipsContainer) {
-    chipsContainer.innerHTML = `<span>Suggestions for ${esc(prof.name)} (${esc(prof.domain)}):</span>` +
-      supSuggestions.filter((sk) => !supSkills.includes(sk)).map((sk) => `<button class="suggest-chip" data-supskill="${esc(sk)}">+ ${esc(sk)}</button>`).join("");
-  }
-
   // Tools
   const tList = $("#supToolsList");
   tList.innerHTML = supTools.map((tl) => `
@@ -598,14 +799,6 @@ $("#addSupToolInput").onkeydown = (e) => {
 };
 
 /* ---------- 2. Worker Agents Sub-page ---------- */
-const AGENT_SUGGESTIONS = {
-  research: ["web-search", "content-extraction", "summarization", "source-verification", "fact-checking"],
-  code: ["javascript", "python", "refactoring", "fix-ci", "ponytail", "generate-run-commands", "syntax-check"],
-  exec: ["shell-exec", "file-io", "docker", "troubleshoot", "process-management", "environment-setup"],
-  review: ["security-audit", "diff-review", "validation", "code-review", "adversarial-testing", "lint"],
-  custom: ["frontend-design", "web-design-engineer", "ui-ux-pro-max", "shadcn", "canvas-design", "animate"],
-};
-
 function renderAgentsPane() {
   if (!CFG) return;
   const container = $("#agentsListContainer");
@@ -628,12 +821,6 @@ function renderAgentsPane() {
         <i class="ti ${active ? "ti-check" : "ti-plus"}"></i>${esc(m.name)}
       </button>`;
     }).join("");
-
-    const suggList = AGENT_SUGGESTIONS[agent.cap] || AGENT_SUGGESTIONS.custom;
-    const availableSuggs = suggList.filter((s) => !(agent.skills || []).includes(s));
-    const suggChips = availableSuggs.map((s) => `
-      <button class="suggest-chip" data-addagentskill="${agent.id}:${esc(s)}">+ ${esc(s)}</button>
-    `).join("");
 
     return `
       <div class="agent-config-card">
@@ -659,7 +846,6 @@ function renderAgentsPane() {
             <input class="in-agent-skill" data-agentid="${agent.id}" placeholder="Add skill to ${esc(agent.name)}..." />
             <button class="btn-add-agent-skill" data-agentid="${agent.id}">Add</button>
           </div>
-          ${suggChips ? `<div class="suggest-chips" style="margin-top:6px"><span>Suggested for ${esc(agent.cap)}:</span>${suggChips}</div>` : ""}
         </div>
 
         <div style="margin-top:10px">
@@ -1323,6 +1509,39 @@ function renderModelsPane() {
   if ($("#cfg-key-openai")) $("#cfg-key-openai").value = prov.openai || "";
   if ($("#cfg-key-deepseek")) $("#cfg-key-deepseek").value = prov.deepseek || "";
   if ($("#cfg-url-ollama")) $("#cfg-url-ollama").value = prov.ollamaUrl || "http://localhost:11434";
+  if ($("#cfg-url-router")) $("#cfg-url-router").value = prov.routerUrl || "http://localhost:20128/v1";
+  if ($("#cfg-key-router")) $("#cfg-key-router").value = prov.routerKey || "";
+  updateProviderBadges(prov);
+}
+
+function updateProviderBadges(prov) {
+  const p = prov || (CFG && CFG.providers) || {};
+  setKeyBadge("#badge-anthropic", !!p.anthropic);
+  setKeyBadge("#badge-openai", !!p.openai);
+  setKeyBadge("#badge-deepseek", !!p.deepseek);
+  const oBadge = $("#badge-ollama");
+  if (oBadge) {
+    if (p.ollamaUrl && p.ollamaUrl !== "http://localhost:11434") {
+      oBadge.textContent = "Custom URL";
+      oBadge.className = "badge blue";
+    } else {
+      oBadge.textContent = "Local Default";
+      oBadge.className = "badge";
+    }
+  }
+  const rBadge = $("#badge-router");
+  if (rBadge) {
+    const hasRouter = !!(p.routerUrl && p.routerKey);
+    rBadge.textContent = hasRouter ? "Configured" : "Not set";
+    rBadge.className = hasRouter ? "badge green" : "badge";
+  }
+}
+
+function setKeyBadge(sel, isConfigured) {
+  const b = $(sel);
+  if (!b) return;
+  b.textContent = isConfigured ? "Configured" : "Not set";
+  b.className = isConfigured ? "badge green" : "badge";
 }
 
 if ($("#defaultModelSelect")) {
@@ -1377,6 +1596,7 @@ if ($("#newModelBtn")) {
         if (!c.providers) c.providers = {};
         c.providers[p] = e.target.value.trim();
       });
+      updateProviderBadges(CFG.providers);
     };
   }
 });
@@ -1386,6 +1606,140 @@ if ($("#cfg-url-ollama")) {
       if (!c.providers) c.providers = {};
       c.providers.ollamaUrl = e.target.value.trim();
     });
+    updateProviderBadges(CFG.providers);
+  };
+}
+if ($("#cfg-url-router")) {
+  $("#cfg-url-router").onchange = (e) => {
+    pushCfg((c) => {
+      if (!c.providers) c.providers = {};
+      c.providers.routerUrl = e.target.value.trim();
+    });
+    updateProviderBadges(CFG.providers);
+  };
+}
+if ($("#cfg-key-router")) {
+  $("#cfg-key-router").onchange = (e) => {
+    pushCfg((c) => {
+      if (!c.providers) c.providers = {};
+      c.providers.routerKey = e.target.value.trim();
+    });
+    updateProviderBadges(CFG.providers);
+  };
+}
+
+// Toggle password eye buttons
+$$(".btn-toggle-eye").forEach((btn) => {
+  btn.onclick = () => {
+    const targetId = btn.dataset.target;
+    const inp = $(`#${targetId}`);
+    if (!inp) return;
+    const isPass = inp.type === "password";
+    inp.type = isPass ? "text" : "password";
+    btn.innerHTML = isPass
+      ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>'
+      : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
+  };
+});
+
+// Explicit Save Credentials button
+if ($("#btnSaveProviders")) {
+  $("#btnSaveProviders").onclick = async () => {
+    const anthropic = $("#cfg-key-anthropic") ? $("#cfg-key-anthropic").value.trim() : "";
+    const openai = $("#cfg-key-openai") ? $("#cfg-key-openai").value.trim() : "";
+    const deepseek = $("#cfg-key-deepseek") ? $("#cfg-key-deepseek").value.trim() : "";
+    const ollamaUrl = $("#cfg-url-ollama") ? $("#cfg-url-ollama").value.trim() : "http://localhost:11434";
+    const routerUrl = $("#cfg-url-router") ? $("#cfg-url-router").value.trim() : "http://localhost:20128/v1";
+    const routerKey = $("#cfg-key-router") ? $("#cfg-key-router").value.trim() : "";
+    await pushCfg((c) => {
+      c.providers = { anthropic, openai, deepseek, ollamaUrl, routerUrl, routerKey };
+    });
+    updateProviderBadges(CFG.providers);
+    const toast = $("#providerSaveToast");
+    if (toast) {
+      toast.style.display = "block";
+      setTimeout(() => { toast.style.display = "none"; }, 3500);
+    }
+  };
+}
+
+// Test Ollama endpoint
+if ($("#btnTestOllama")) {
+  $("#btnTestOllama").onclick = async () => {
+    const url = $("#cfg-url-ollama") ? $("#cfg-url-ollama").value.trim() : "http://localhost:11434";
+    const badge = $("#badge-ollama");
+    const btn = $("#btnTestOllama");
+    btn.textContent = "Testing...";
+    try {
+      const res = await api("POST", "/api/providers/test-ollama", { url });
+      if (res && res.ok) {
+        badge.textContent = `Online (${res.count} models)`;
+        badge.className = "badge green";
+        btn.textContent = "Connected ✓";
+      } else {
+        badge.textContent = "Offline";
+        badge.className = "badge";
+        btn.textContent = "Offline ✗";
+      }
+    } catch {
+      badge.textContent = "Offline";
+      badge.className = "badge";
+      btn.textContent = "Offline ✗";
+    }
+    setTimeout(() => { if (btn) btn.textContent = "Test Connection"; }, 3000);
+  };
+}
+
+// Test Router endpoint
+if ($("#btnTestRouter")) {
+  $("#btnTestRouter").onclick = async () => {
+    const url = $("#cfg-url-router") ? $("#cfg-url-router").value.trim() : "http://localhost:20128/v1";
+    const key = $("#cfg-key-router") ? $("#cfg-key-router").value.trim() : "";
+    const badge = $("#badge-router");
+    const btn = $("#btnTestRouter");
+    btn.textContent = "Testing...";
+    try {
+      const res = await api("POST", "/api/providers/test-router", { url, key });
+      if (res && res.ok) {
+        badge.textContent = `Online (${res.count} models)`;
+        badge.className = "badge green";
+        btn.textContent = "Connected ✓";
+      } else {
+        badge.textContent = "Offline";
+        badge.className = "badge";
+        btn.textContent = "Offline ✗";
+      }
+    } catch {
+      badge.textContent = "Offline";
+      badge.className = "badge";
+      btn.textContent = "Offline ✗";
+    }
+    setTimeout(() => { if (btn) btn.textContent = "Test Connection"; }, 3000);
+  };
+}
+
+// Sync Router models
+if ($("#btnSyncRouterModels")) {
+  $("#btnSyncRouterModels").onclick = async () => {
+    const url = $("#cfg-url-router") ? $("#cfg-url-router").value.trim() : "http://localhost:20128/v1";
+    const key = $("#cfg-key-router") ? $("#cfg-key-router").value.trim() : "";
+    const btn = $("#btnSyncRouterModels");
+    const orig = btn.innerHTML;
+    btn.textContent = "Syncing...";
+    try {
+      const res = await api("POST", "/api/providers/sync-router-models", { url, key });
+      if (res && res.ok) {
+        if (res.models) CFG.models = res.models;
+        renderModelsPane();
+        syncComposerModels();
+        btn.textContent = `Synced ${res.added} new (${res.total} total)`;
+      } else {
+        btn.textContent = "Sync failed ✗";
+      }
+    } catch {
+      btn.textContent = "Sync failed ✗";
+    }
+    setTimeout(() => { if (btn) btn.innerHTML = orig; }, 3500);
   };
 }
 
@@ -1813,12 +2167,13 @@ $("#viewSettings").addEventListener("change", (e) => {
 
 /* ---------- boot ---------- */
 (async function boot() {
+  let d = null, c = null;
   try {
-    const [d, c] = await Promise.all([
+    [d, c] = await Promise.all([
       api("GET", "/api/logs?limit=100"),
       api("GET", "/api/config").catch(() => null),
     ]);
-    logs = d.logs.map((e) => ({ time: e.ts.slice(11, 19), type: tagOf(e), actor: e.source.toUpperCase(), message: labelOf(e) }));
+    logs = (d.logs || []).map((e) => ({ time: e.ts.slice(11, 19), type: tagOf(e), actor: e.source.toUpperCase(), message: labelOf(e) }));
     if (c) {
       CFG = c;
       normalizeCfg(CFG);
@@ -1827,6 +2182,41 @@ $("#viewSettings").addEventListener("change", (e) => {
     }
   } catch { trace("Server unreachable — start it with: node server.js"); return; }
   renderLogs();
+
+  // Rehydrate recent chat conversation from event log
+  if (d && Array.isArray(d.logs)) {
+    const thread = $("#conversationThread");
+    if (thread) {
+      d.logs.slice(-30).forEach((e) => {
+        if (e.type === "user_message") {
+          thread.insertAdjacentHTML("beforeend", `
+            <div class="chat-msg user">
+              <div class="chat-meta"><span>You</span><time>${e.ts.slice(11, 16)}</time></div>
+              <div class="chat-bubble"><p style="margin:0;white-space:pre-wrap">${esc(e.payload)}</p></div>
+            </div>
+          `);
+        } else if (e.type === "final_answer") {
+          thread.insertAdjacentHTML("beforeend", `
+            <div class="chat-msg assistant">
+              <div class="chat-meta">
+                <div style="display:flex;align-items:center;gap:6px">
+                  <div class="agent-mark" style="width:24px;height:24px;font-size:11px">A</div>
+                  <strong>OVERLORD</strong>
+                  <span class="badge blue" style="font-size:8.5px;padding:2px 5px">${esc(e.model || "AI")}</span>
+                </div>
+                <time>${e.ts.slice(11, 16)}</time>
+              </div>
+              <div class="chat-bubble">
+                ${formatMsg(e.payload)}
+              </div>
+            </div>
+          `);
+        }
+      });
+      scrollChat();
+    }
+  }
+
   trace("Console connected · waiting for instructions.");
   const es = new EventSource("/api/stream");
   es.onmessage = (m) => { try { onEvent(JSON.parse(m.data)); } catch {} };

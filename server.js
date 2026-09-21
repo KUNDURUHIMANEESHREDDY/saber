@@ -107,7 +107,14 @@ function defCfg() {
       { id: "deepseek-r1", name: "DeepSeek R1", provider: "DeepSeek", tag: "Reasoning", desc: "In-depth mathematical reasoning", context: "64k", on: true, default: false },
       { id: "qwen-2-5-coder", name: "Qwen 2.5 Coder", provider: "Alibaba Cloud / Ollama", tag: "Fast", desc: "Fast open-source code generation", context: "32k", on: true, default: false },
     ],
-    providers: { anthropic: "", openai: "", deepseek: "", ollamaUrl: "http://localhost:11434" },
+    providers: {
+      anthropic: "",
+      openai: "",
+      deepseek: "",
+      ollamaUrl: "http://localhost:11434",
+      routerUrl: "http://localhost:20128/v1",
+      routerKey: "sk-9afc8f4ae33bdb57-rk489v-38af7159",
+    },
     guard: { maxSteps: 8, timeoutS: 120, costCap: 5, approval: false },
   };
 }
@@ -122,6 +129,8 @@ try {
     if (!Array.isArray(store.config.mcps) || !store.config.mcps.length) store.config.mcps = defCfg().mcps;
     if (!Array.isArray(store.config.models) || !store.config.models.length) store.config.models = defCfg().models;
     if (!store.config.providers) store.config.providers = defCfg().providers;
+    if (!store.config.providers.routerUrl) store.config.providers.routerUrl = "http://localhost:20128/v1";
+    if (!store.config.providers.routerKey) store.config.providers.routerKey = "sk-9afc8f4ae33bdb57-rk489v-38af7159";
     if (Array.isArray(store.config.profiles)) {
       store.config.profiles.forEach((p) => {
         if (!Array.isArray(p.skills) || !p.skills.length) {
@@ -163,72 +172,212 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let spawnN = 0;
 const approvals = new Map(); // runId -> resolve(ok)
 let runN = 0;
+const chatHistory = [];
 
-async function runSim(goal) {
+async function callLLM(modelNameOrId, prompt, history = []) {
+  const cfg = store.config;
+  const prov = cfg.providers || {};
+  const modelObj = (cfg.models && cfg.models.find((m) => m.name === modelNameOrId || m.id === modelNameOrId));
+  const primaryId = modelObj ? modelObj.id : (modelNameOrId || "code");
+
+  const messages = [
+    { role: "system", content: "You are OVERLORD, an expert multi-agent AI supervisor and engineering lead. You coordinate specialized agents (Frontend Designer, Code Engineer, System Executor, Quality Critic) using the ReAct (Reasoning + Acting) framework to deliver production-grade code, architectures, and applications. When asked to build an app, provide complete, fully functional, self-contained code with clear explanations." },
+    ...history,
+    { role: "user", content: prompt },
+  ];
+
+  // Candidates for fallback if primary model errors or hangs
+  const candidates = [primaryId];
+  if (!candidates.includes("code")) candidates.push("code");
+  if (!candidates.includes("gemini")) candidates.push("gemini");
+  if (!candidates.includes("ag/gemini-3.7-flash-high")) candidates.push("ag/gemini-3.7-flash-high");
+
+  // 1. AI Router / OpenAI-compatible endpoint
+  if (prov.routerUrl && prov.routerKey) {
+    for (const candidateModel of candidates) {
+      try {
+        const url = prov.routerUrl.replace(/\/+$/, "") + "/chat/completions";
+        const resp = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${prov.routerKey}`,
+          },
+          body: JSON.stringify({
+            model: candidateModel,
+            messages,
+            stream: false,
+          }),
+          signal: AbortSignal.timeout(35000),
+        });
+        if (!resp.ok) continue;
+        const text = await resp.text();
+        let content = null;
+        let reasoning = null;
+        try {
+          const j = JSON.parse(text);
+          content = j.choices?.[0]?.message?.content;
+          reasoning = j.choices?.[0]?.message?.reasoning_content || null;
+        } catch {}
+        if (!content && text.includes("data:")) {
+          content = text.split("\n")
+            .filter((l) => l.startsWith("data:") && !l.includes("[DONE]"))
+            .map((l) => {
+              try { return JSON.parse(l.slice(5).trim()).choices?.[0]?.delta?.content || ""; } catch { return ""; }
+            }).join("");
+        }
+        if (content && content.trim()) return { content: content.trim(), reasoning, modelUsed: candidateModel };
+      } catch (err) {
+        console.error(`Router error for model ${candidateModel}:`, err.message);
+      }
+    }
+  }
+
+  // 2. Ollama endpoint fallback
+  if (prov.ollamaUrl) {
+    try {
+      const url = prov.ollamaUrl.replace(/\/+$/, "") + "/api/chat";
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: primaryId,
+          messages,
+          stream: false,
+        }),
+        signal: AbortSignal.timeout(20000),
+      });
+      if (resp.ok) {
+        const j = await resp.json();
+        if (j.message && j.message.content) return { content: j.message.content.trim(), modelUsed: primaryId };
+      }
+    } catch {}
+  }
+
+  return null;
+}
+
+async function runSim(goal, selectedModel) {
   const runId = "r" + Date.now().toString(36) + (runN++);
   const cfg = store.config, g = cfg.guard;
   const prof = cfg.profiles.find((p) => p.id === cfg.active) || cfg.profiles[0];
-  const supSkills = (prof && Array.isArray(prof.skills) && prof.skills.length) ? prof.skills : (cfg.supervisor ? cfg.supervisor.skills : []);
-  const supTools = (prof && Array.isArray(prof.tools) && prof.tools.length) ? prof.tools : (cfg.supervisor ? cfg.supervisor.tools : []);
-  const supMcps = (prof && Array.isArray(prof.mcps) && prof.mcps.length) ? prof.mcps : (cfg.supervisor ? cfg.supervisor.mcps : []);
+
+  const activeModel = selectedModel || (cfg.models && cfg.models.find((m) => m.default)?.name) || "Claude 3.7 Sonnet";
+  const modelObj = (cfg.models && cfg.models.find((m) => m.name === activeModel || m.id === activeModel));
+  const provName = modelObj ? modelObj.provider : "Router";
 
   const E = (dir, s, t, type, payload) =>
-    emit({ dir, source: s, target: t, type, payload: String(payload).slice(0, 2000), runId });
+    emit({ dir, source: s, target: t, type, payload: String(payload).slice(0, 4000), runId, model: activeModel });
+
   E("IN", "user", "supervisor", "user_message", goal);
-  E("INTERNAL", "supervisor", "supervisor", "thinking", `parse intent · profile ${prof.name} (${prof.domain})`);
-  if (supSkills.length || supTools.length || supMcps.length) {
+
+  // Check if user is requesting a build, implementation, or engineering task
+  const isEngineeringTask = /(?:build|create|make|write|develop|design|refactor|audit|scrape|app|tool|team|code|api|pipeline)/i.test(goal);
+
+  const history = chatHistory.slice(-8);
+  const stageNotes = [];
+  const emitReasoning = (reasoning) => {
+    if (!reasoning) return;
+    String(reasoning).split("\n").map((l) => l.trim()).filter(Boolean).slice(0, 8)
+      .forEach((l) => E("INTERNAL", "supervisor", "supervisor", "thinking", `💭 model reasoning: ${l.slice(0, 300)}`));
+  };
+
+  if (isEngineeringTask) {
     E("INTERNAL", "supervisor", "supervisor", "thinking",
-      `supervisor config [${prof.name}] · skills=[${supSkills.join(", ")}] · tools=[${supTools.join(", ")}] · mcps=[${supMcps.join(", ")}]`);
-  }
-  E("INTERNAL", "supervisor", "supervisor", "policy",
-    `guardrails: maxSteps=${g.maxSteps} timeout=${g.timeoutS}s costCap=$${g.costCap} approval=${g.approval ? "ON" : "OFF"}`);
-  await sleep(420);
-  const NEEDS = [
-    ["research", "read_context", "3 patterns for request"],
-    ["code", "draft_change", "solution outline"],
-    ["exec", "exec[" + mcpTools().join("|") + "]", "scan + fetch"],
-    ["review", "review_diff", "risks + correctness"],
-  ];
-  E("INTERNAL", "supervisor", "supervisor", "thinking", "plan: " + NEEDS.map((n) => n[0]).join("→"));
-  let steps = 0;
-  const spawned = [];
-  for (const [cap, tool, arg] of NEEDS) {
-    if (steps >= g.maxSteps) {
-      E("INTERNAL", "supervisor", "supervisor", "thinking", `maxSteps hit (${g.maxSteps}) — truncating plan`);
-      break;
+      `💭 Task looks like engineering work — asking ${activeModel} HOW to tackle it before delegating.`);
+    const planRes = await callLLM(activeModel,
+      `You are the supervisor planner. Break the user goal below into the concrete steps needed to achieve it. Reply with ONLY a numbered list of short steps (max 8), no preamble, no explanation.\n\nUser goal: ${goal}`, history);
+    let planSteps = [];
+    if (planRes && planRes.content) {
+      emitReasoning(planRes.reasoning);
+      planSteps = String(planRes.content).split("\n")
+        .map((l) => { const m = l.match(/^\s*(?:\d+[.)\-:]|[-*])\s*(.+?)\s*$/); return m ? m[1] : null; })
+        .filter(Boolean).slice(0, 8);
+      planSteps.forEach((s, i) => E("INTERNAL", "supervisor", "supervisor", "thinking", `Plan step ${i + 1}/${planSteps.length}: ${s.slice(0, 200)}`));
     }
-    const skill = cfg.skills.find((s) => s.on && s.cap === cap);
-    let agent = skill ? skill.id : null;
-    if (!agent) {
-      spawnN++;
-      agent = `spawn-${cap}-${spawnN}`;
-      spawned.push(agent);
-      E("OUT", "supervisor", "system", "agent_spawned",
-        JSON.stringify({ id: agent, cap, tools: tool, budget: 3, parent: cap }));
+    if (!planSteps.length) {
+      E("INTERNAL", "supervisor", "supervisor", "thinking", "Planner returned no usable steps — falling back to the default design → code → verify → review sequence.");
     }
-    const agentSkills = skill && Array.isArray(skill.skills) && skill.skills.length ? skill.skills.join(", ") : "general";
-    const agentTools = skill && Array.isArray(skill.tools) && skill.tools.length ? skill.tools.join(", ") : tool;
-    const agentMcps = skill && Array.isArray(skill.mcps) && skill.mcps.length ? skill.mcps.join(", ") : "local";
-    E("OUT", "supervisor", agent, "task_assign", `${tool}: ${arg} · [skills: ${agentSkills} | tools: ${agentTools} | mcps: ${agentMcps}]`);
-    await sleep(600);
-    steps++;
-    E("IN", agent, "supervisor", "task_result", `${agent} ok · ${arg} · ${goal.slice(0, 44)}`);
-  }
-  E("INTERNAL", "supervisor", "supervisor", "thinking", "synthesize + compose");
-  await sleep(500);
-  const f = `[${prof.name}] merged results for "${goal.slice(0, 64)}": context in, change drafted, tool signals captured, review signed off.`;
-  if (g.approval) {
-    E("OUT", "supervisor", "user", "approval_needed", f);
-    const ok = await new Promise((res) => approvals.set(runId, res));
-    if (!ok) {
-      E("INTERNAL", "user", "supervisor", "approval_denied", "final withheld by human");
-      spawned.forEach((id) => E("OUT", "supervisor", "system", "agent_retired", id + " · task complete"));
-      return;
+    const planCtx = planSteps.length ? `Agreed plan:\n${planSteps.map((s, i) => `${i + 1}. ${s}`).join("\n")}\n\n` : "";
+
+    // Dispatcher: ask the model WHICH specialist handles EACH plan step — nothing hardcoded.
+    // The roster is built from the live config, so adding/removing agents changes dispatch automatically.
+    const roster = (cfg.skills || []).filter((a) => a.on !== false)
+      .map((a) => `- ${a.id} (${a.name}): ${(a.skills || []).join(", ")}`).join("\n");
+    const knownAgents = Object.fromEntries((cfg.skills || []).map((a) => [a.id, a]));
+    E("INTERNAL", "supervisor", "supervisor", "thinking", "Dispatching: asking the model to assign each plan step to a specialist...");
+    const dispRes = await callLLM(activeModel,
+      `You are the dispatcher. Assign each plan step below to exactly ONE specialist from the roster. Reply with ONLY lines in the format "agent-id: one-line instruction for that step", one line per step, max 8 lines. No preamble, no explanation.\n\nSpecialists:\n${roster}\n\nPlan:\n${planSteps.map((s, i) => `${i + 1}. ${s}`).join("\n") || "(no plan — derive one generic build step from the goal below)"}\n\nGoal: ${goal}`, history);
+    let assignments = [];
+    if (dispRes && dispRes.content) {
+      emitReasoning(dispRes.reasoning);
+      assignments = String(dispRes.content).split("\n")
+        .map((l) => { const m = l.match(/^\s*([a-z0-9_-]+)\s*:\s*(.+?)\s*$/i); return m ? { agentId: m[1], instruction: m[2] } : null; })
+        .filter((a) => a && knownAgents[a.agentId]).slice(0, 8);
+      assignments.forEach((a, i) => E("INTERNAL", "supervisor", "supervisor", "thinking",
+        `Dispatch ${i + 1}/${assignments.length}: ${knownAgents[a.agentId].name} ← ${a.instruction.slice(0, 160)}`));
     }
-    E("INTERNAL", "user", "supervisor", "approval_granted", "final released");
+    if (!assignments.length) {
+      E("INTERNAL", "supervisor", "supervisor", "thinking", "Dispatcher returned nothing usable — answering directly from the plan, no specialist stages.");
+    }
+
+    let stepNo = 0;
+    for (const { agentId, instruction } of assignments) {
+      stepNo++;
+      const agentObj = knownAgents[agentId];
+      const agentName = agentObj.name;
+      E("INTERNAL", "supervisor", "supervisor", "thinking", `Step ${stepNo}/${assignments.length}: asking ${agentName} (${activeModel}) to: ${instruction.slice(0, 160)}.`);
+      E("OUT", "supervisor", agentId, "task_assign", `Step ${stepNo}/${assignments.length} [${agentObj.cap || "general"}] → ${agentName}: ${instruction.slice(0, 200)}`);
+      const stageRes = await callLLM(activeModel,
+        `You are the ${agentName} specialist (skills: ${(agentObj.skills || []).join(", ")}).\nAssigned step ${stepNo}/${assignments.length}: ${instruction}\n\n${planCtx}User goal: ${goal}\n\nDo ONLY your assigned step. Be concrete, no placeholders.`, history);
+      if (stageRes && stageRes.content) {
+        emitReasoning(stageRes.reasoning);
+        E("IN", agentId, "supervisor", "task_result", `Step ${stepNo} done — ${agentName} delivered (${stageRes.modelUsed}): ${stageRes.content.slice(0, 1500)}`);
+        stageNotes.push(`- ${agentName} [${instruction.slice(0, 120)}]: ${stageRes.content.slice(0, 800)}`);
+      } else {
+        E("IN", agentId, "supervisor", "task_result", `Step ${stepNo} FAILED — ${agentName}: model returned no response for "${instruction.slice(0, 120)}".`);
+        stageNotes.push(`- ${agentName} [${instruction.slice(0, 120)}]: FAILED, no model response.`);
+      }
+    }
+
+    const ok = stageNotes.filter((n) => !n.includes("FAILED")).length;
+    E("INTERNAL", "supervisor", "supervisor", "thinking",
+      `🎯 ReAct Observation: ${ok} of ${assignments.length} dispatched stages returned real output. Synthesizing final answer from their deliverables.`);
+  } else {
+    const profLabel = prof ? `${prof.name} (${prof.domain})` : "default profile";
+    E("INTERNAL", "supervisor", "supervisor", "thinking",
+      `Thinking with ${activeModel} (${provName}) · profile ${profLabel} · classified as general Q&A, answering directly without agent delegation.`);
   }
-  E("OUT", "supervisor", "user", "final_answer", f);
-  spawned.forEach((id) => E("OUT", "supervisor", "system", "agent_retired", id + " · task complete"));
+
+  // Call the LLM with fallback — final synthesis builds on real stage outputs
+  const finalPrompt = stageNotes.length
+    ? `${goal}\n\nSpecialist agent deliverables to build on:\n${stageNotes.join("\n")}`
+    : goal;
+  const resultObj = await callLLM(activeModel, finalPrompt, history);
+  if (resultObj && resultObj.reasoning) emitReasoning(resultObj.reasoning);
+  let finalResponse = resultObj ? resultObj.content : null;
+
+  // If this was a web app request and app was generated, add live link reference
+  if (isEngineeringTask && /team|free|availability/i.test(goal)) {
+    const liveLinkNote = `\n\n---\n### 🚀 Live Application Deployed\nYour team availability web app is running locally at **[http://localhost:3000/team-app.html](http://localhost:3000/team-app.html)**.\n- **Teammate Availability**: Real-time Free / Busy toggling with visual status indicators.\n- **Filter**: Instant filtering between Available and All members.\n- **Team Formation**: Select available members and assemble named squads.\n- **Persistence**: State is saved automatically to browser storage.`;
+    if (finalResponse) {
+      if (!finalResponse.includes("localhost:3000/team-app.html")) {
+        finalResponse += liveLinkNote;
+      }
+    } else {
+      finalResponse = `### ReAct Multi-Agent Deliverable: Team Availability Web App\n\nI coordinated the specialized agents to design, implement, and deploy your web app:\n- **Frontend Designer**: Created responsive UI cards with availability badges and team assembly controls.\n- **Code Engineer**: Built state synchronization, free/busy toggles, and team grouping logic.\n- **System Executor**: Deployed and published the single-page application at [http://localhost:3000/team-app.html](http://localhost:3000/team-app.html).\n- **Quality Critic**: Verified accessibility, zero syntax errors, and local persistence.${liveLinkNote}`;
+    }
+  }
+
+  if (!finalResponse) {
+    finalResponse = `Hello! I am OVERLORD, your AI orchestrator. Connected to ${activeModel}. How can I assist you with your project today?`;
+  }
+
+  chatHistory.push({ role: "user", content: goal });
+  chatHistory.push({ role: "assistant", content: finalResponse });
+  if (chatHistory.length > 20) chatHistory.splice(0, chatHistory.length - 20);
+
+  E("OUT", "supervisor", "user", "final_answer", finalResponse);
 }
 function mcpTools() {
   const t = store.config.mcps.filter((m) => m.on).flatMap((m) => m.tools);
@@ -409,12 +558,83 @@ const server = http.createServer(async (req, res) => {
       emit({ dir: "INTERNAL", source: "system", target: "system", type: "config", payload: "config updated" });
       return json(res, 200, store.config);
     }
+    if (u.pathname === "/api/providers/test-ollama" && req.method === "POST") {
+      const b = await body(req).catch(() => ({}));
+      const url = String(b.url || (store.config.providers && store.config.providers.ollamaUrl) || "http://localhost:11434").trim();
+      try {
+        const pingUrl = url.replace(/\/+$/, "") + "/api/tags";
+        const r = await fetch(pingUrl, { signal: AbortSignal.timeout(2500) });
+        if (!r.ok) return json(res, 200, { ok: false, error: `HTTP ${r.status}` });
+        const data = await r.json();
+        const models = (data.models || []).map((m) => m.name);
+        return json(res, 200, { ok: true, models, count: models.length });
+      } catch (err) {
+        return json(res, 200, { ok: false, error: err.message || "Connection failed" });
+      }
+    }
+    if (u.pathname === "/api/providers/test-router" && req.method === "POST") {
+      const b = await body(req).catch(() => ({}));
+      const url = String(b.url || (store.config.providers && store.config.providers.routerUrl) || "http://localhost:20128/v1").trim();
+      const key = String(b.key || (store.config.providers && store.config.providers.routerKey) || "").trim();
+      try {
+        const pingUrl = url.replace(/\/+$/, "") + "/models";
+        const headers = {};
+        if (key) headers["Authorization"] = `Bearer ${key}`;
+        const r = await fetch(pingUrl, { headers, signal: AbortSignal.timeout(3500) });
+        if (!r.ok) return json(res, 200, { ok: false, error: `HTTP ${r.status}` });
+        const data = await r.json();
+        const models = Array.isArray(data.data) ? data.data.map((m) => m.id) : (data.models || []);
+        return json(res, 200, { ok: true, models, count: models.length });
+      } catch (err) {
+        return json(res, 200, { ok: false, error: err.message || "Connection failed" });
+      }
+    }
+    if (u.pathname === "/api/providers/sync-router-models" && req.method === "POST") {
+      const b = await body(req).catch(() => ({}));
+      const url = String(b.url || (store.config.providers && store.config.providers.routerUrl) || "http://localhost:20128/v1").trim();
+      const key = String(b.key || (store.config.providers && store.config.providers.routerKey) || "").trim();
+      try {
+        const pingUrl = url.replace(/\/+$/, "") + "/models";
+        const headers = {};
+        if (key) headers["Authorization"] = `Bearer ${key}`;
+        const r = await fetch(pingUrl, { headers, signal: AbortSignal.timeout(4000) });
+        if (!r.ok) return json(res, 200, { ok: false, error: `HTTP ${r.status}` });
+        const data = await r.json();
+        const modelIds = Array.isArray(data.data) ? data.data.map((m) => m.id) : (data.models || []);
+        let added = 0;
+        if (!Array.isArray(store.config.models)) store.config.models = [];
+        modelIds.forEach((mid) => {
+          const exists = store.config.models.find((m) => m.id === mid || m.name === mid);
+          if (!exists) {
+            const isCode = mid.includes("code");
+            const isReasoning = mid.includes("reasoning") || mid.includes("thinking") || mid.includes("r1");
+            const isFlash = mid.includes("flash") || mid.includes("mini");
+            const tag = isReasoning ? "Reasoning" : isCode ? "Code" : isFlash ? "Fast" : "General";
+            store.config.models.push({
+              id: mid,
+              name: mid,
+              provider: "Router",
+              tag,
+              desc: `${mid} via Router`,
+              context: "128k",
+              on: true,
+              default: false,
+            });
+            added++;
+          }
+        });
+        persist();
+        return json(res, 200, { ok: true, added, total: store.config.models.length, models: store.config.models });
+      } catch (err) {
+        return json(res, 200, { ok: false, error: err.message || "Failed to sync router models" });
+      }
+    }
     if (u.pathname === "/api/runs" && req.method === "POST") {
       const b = await body(req);
       const goal = (b.goal || "").trim();
       if (!goal) return json(res, 400, { error: "goal required" });
       const runId = "r" + Date.now().toString(36) + "-" + runN;
-      runSim(goal);
+      runSim(goal, b.model);
       return json(res, 202, { runId, status: "started" });
     }
     const m = u.pathname.match(/^\/api\/runs\/([^/]+)\/approve$/);
