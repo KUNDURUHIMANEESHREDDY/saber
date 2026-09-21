@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>harness — event log</title>
+<style>
+:root{--bg:#f4f7fa;--bg2:#ffffff;--bg3:#e9eff5;--line:#d7e0e9;--line2:#b9c7d4;--tx:#16283d;--mut:#5c7186;--dim:#8fa1b1;--acc:#2f6db3;--mono:ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;--sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+html[data-theme="midnight-galaxy"]{--bg:#0c0e12;--bg2:#11141a;--bg3:#171b23;--line:#232936;--line2:#2c3444;--tx:#e6e9ef;--mut:#8b94a5;--dim:#5b6474;--acc:#4cc38a}
+html[data-theme="ocean-depths"]{--bg:#101820;--bg2:#16222c;--bg3:#1c2a35;--line:#24333f;--tx:#eef4f6;--mut:#8ba3b0;--acc:#2d8b8b}
+html[data-theme="arctic-frost"]{--bg:#f4f7fa;--bg2:#e9eff5;--bg3:#dfe7ef;--line:#c9d5e1;--tx:#16283d;--mut:#5c7186;--acc:#2f6db3}
+*{box-sizing:border-box}html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--tx);font-family:var(--sans);font-size:13.5px;display:flex;flex-direction:column;height:100vh;overflow:hidden}
+.topbar{height:48px;flex:0 0 48px;display:flex;align-items:center;gap:10px;padding:0 14px;border-bottom:1px solid var(--line);background:var(--bg2)}
+.topbar h1{font-size:13px;margin:0;font-weight:600}
+.topbar h1 span{color:var(--dim);font-family:var(--mono);font-size:11px;font-weight:400}
+.f{font-family:var(--mono);font-size:11.5px;background:var(--bg3);color:var(--tx);border:1px solid var(--line);border-radius:6px;padding:6px 9px}
+input.f{width:220px;outline:none}input.f:focus{border-color:var(--mut)}
+button.f{cursor:pointer}button.f:hover{border-color:var(--mut)}
+.sp{flex:1}
+a.back{font-family:var(--mono);font-size:11px;color:var(--tx);text-decoration:none;border:1px solid var(--line2);border-radius:6px;padding:6px 10px;background:var(--bg3)}
+#meta{padding:10px 16px;font-family:var(--mono);font-size:11px;color:var(--dim);border-bottom:1px solid var(--line)}
+#stream{flex:1;overflow:auto;padding:6px 0 40px}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+thead th{position:sticky;top:0;background:var(--bg2);font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.1em;color:var(--dim);text-align:left;padding:8px 12px;border-bottom:1px solid var(--line);z-index:1}
+tbody td{padding:8px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+td.mono{font-family:var(--mono);font-size:11.5px;white-space:nowrap;color:var(--mut)}
+td.pay{font-family:var(--mono);font-size:11.5px;white-space:pre-wrap;word-break:break-word;color:var(--tx)}
+.tag{font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:99px;border:1px solid var(--line2);color:var(--mut)}
+.tag.IN{color:var(--acc);border-color:var(--acc)}.tag.OUT{color:var(--warn);border-color:var(--warn)}
+#veil{position:fixed;inset:0;z-index:50;background:var(--bg);opacity:0;pointer-events:none;transition:opacity .3s ease}
+#veil.show{opacity:1;pointer-events:all}
+:focus-visible{outline:1px solid var(--acc);outline-offset:2px}
+</style>
+</head>
+<body>
+<div id="veil" aria-hidden="true"></div>
+<div class="topbar"><h1>event log <span id="n"></span></h1><span class="sp"></span>
+<input class="f" id="s" placeholder="filter…" aria-label="filter"/>
+<select class="f" id="d" aria-label="dir"><option value="">all dirs</option><option>IN</option><option>OUT</option><option>INTERNAL</option></select>
+<select class="f" id="t" aria-label="type"><option value="">all types</option><option>user_message</option><option>thinking</option><option>task_assign</option><option>task_result</option><option>final_answer</option><option>session_start</option><option>theme_change</option><option>navigate</option></select>
+<button class="f" id="exp">export</button><button class="f" id="clr">clear</button>
+<label class="f" style="border:0;color:var(--dim)">theme <select class="f" id="theme" aria-label="theme"><option value="midnight-galaxy">galaxy</option><option value="ocean-depths">ocean</option><option value="arctic-frost">arctic</option></select></label>
+<a class="back" href="run.html">run view</a><a class="back" href="index.html" id="back">← console</a></div>
+<div id="meta"></div>
+<div id="stream"><table><thead><tr><th>#</th><th>TIMESTAMP</th><th>DIR</th><th>EDGE</th><th>TYPE</th><th>PAYLOAD</th></tr></thead><tbody id="b"></tbody></table></div>
+<script>
+const LS="agent_demo_logs",BC="agent_demo_bus",THEME_KEY="orbital_theme",$=s=>document.querySelector(s);
+const all=()=>{try{return JSON.parse(localStorage.getItem(LS)||"[]")}catch{return[]}};
+const esc=s=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;");
+function applyTheme(t){document.documentElement.dataset.theme=t==="midnight-galaxy"?"":t;try{localStorage.setItem(THEME_KEY,t)}catch{}const s=$("#theme");if(s&&[...s.options].some(o=>o.value===t))s.value=t}
+try{applyTheme(localStorage.getItem(THEME_KEY)||"arctic-frost")}catch{}
+$("#theme").addEventListener("change",e=>applyTheme(e.target.value));
+function render(){const q=$("#s").value.toLowerCase(),d=$("#d").value,t=$("#t").value;const a=all().filter(e=>(!d||e.dir===d)&&(!t||e.type===t)&&(!q||(e.payload+e.source+e.target).toLowerCase().includes(q)));$("#n").textContent="· "+a.length+" / "+all().length;$("#meta").textContent=a.length+" / "+all().length+" records · IN inbound · OUT outbound · INTERNAL supervisor";$("#b").innerHTML=a.map((e,i)=>`<tr><td class="mono">${i+1}</td><td class="mono">${e.ts}</td><td><span class="tag ${e.dir}">${e.dir}</span></td><td class="mono">${esc(e.source)} → ${esc(e.target)}</td><td class="mono">${esc(e.type)}</td><td class="pay">${esc(e.payload)}</td></tr>`).join("")}
+["s","d","t"].forEach(id=>$("#"+id).addEventListener("input",render));
+$("#clr").onclick=()=>{localStorage.setItem(LS,"[]");render()};
+$("#exp").onclick=()=>{const b=new Blob([localStorage.getItem(LS)||"[]"],{type:"application/json"});const u=URL.createObjectURL(b);const x=document.createElement("a");x.href=u;x.download="harness-logs.json";x.click();setTimeout(()=>URL.revokeObjectURL(u),2000)};
+addEventListener("storage",e=>{if(e.key===LS)render();if(e.key===THEME_KEY&&e.newValue)applyTheme(e.newValue)});
+try{new BroadcastChannel(BC).onmessage=render}catch{}
+document.querySelectorAll("a.back").forEach(a=>a.addEventListener("click",e=>{if(matchMedia("(prefers-reduced-motion: reduce)").matches)return;e.preventDefault();const h=e.currentTarget.href;$("#veil").classList.add("show");setTimeout(()=>location.href=h,300)}));
+render();
+</script>
+</body>
+</html>

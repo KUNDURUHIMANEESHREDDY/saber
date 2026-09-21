@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>harness — console</title>
+<style>
+:root{--bg:#f4f7fa;--bg2:#ffffff;--bg3:#e9eff5;--line:#d7e0e9;--line2:#b9c7d4;--tx:#16283d;--mut:#5c7186;--dim:#8fa1b1;--acc:#2f6db3;--ok:#1d7a4f;--warn:#b25e09;--mono:ui-monospace,"JetBrains Mono",SFMono-Regular,Menlo,Consolas,monospace;--sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+html[data-theme="midnight-galaxy"]{--bg:#0c0e12;--bg2:#11141a;--bg3:#171b23;--line:#232936;--line2:#2c3444;--tx:#e6e9ef;--mut:#8b94a5;--dim:#5b6474;--acc:#4cc38a;--ok:#4cc38a;--warn:#e5a158}
+html[data-theme="ocean-depths"]{--bg:#101820;--bg2:#16222c;--bg3:#1c2a35;--line:#24333f;--line2:#2e4250;--tx:#eef4f6;--mut:#8ba3b0;--dim:#5f7a88;--acc:#2d8b8b;--ok:#4cc38a;--warn:#e5a158}
+html[data-theme="arctic-frost"]{--bg:#f4f7fa;--bg2:#e9eff5;--bg3:#dfe7ef;--line:#c9d5e1;--line2:#a9bad0;--tx:#16283d;--mut:#5c7186;--dim:#8fa1b1;--acc:#2f6db3;--ok:#1d7a4f;--warn:#b25e09}
+*{box-sizing:border-box}html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--tx);font-family:var(--sans);font-size:14px;height:100vh;overflow:hidden}
+.app{display:grid;grid-template-columns:250px minmax(0,1fr) 350px;height:100vh}
+/* ---- shared ---- */
+h3{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.12em;color:var(--dim);margin:0;padding:14px 14px 8px}
+button{font-family:inherit}
+/* ---- left ---- */
+.left{background:var(--bg2);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.brand{padding:14px 14px 4px;font-weight:800;letter-spacing:-.01em;font-size:15px}
+.brand small{display:block;font-family:var(--mono);font-size:10px;color:var(--dim);font-weight:400;margin-top:2px}
+.sess{padding:0 8px;display:flex;flex-direction:column;gap:2px}
+.sess button{display:flex;gap:8px;align-items:center;background:transparent;border:0;color:var(--mut);font-family:var(--mono);font-size:12px;text-align:left;padding:7px 8px;border-radius:6px;cursor:pointer;width:100%}
+.sess button.cur{background:var(--bg3);color:var(--tx)}
+.sess button:hover{background:var(--bg3)}
+.sess button.action{color:var(--dim);border:1px dashed var(--line2);justify-content:center}
+.agents{padding:0 8px;display:flex;flex-direction:column;gap:2px;overflow:auto}
+.ag{display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:6px;font-size:12.5px}
+.ag .d{width:7px;height:7px;border-radius:50%;background:var(--dim);flex:0 0 7px}
+.ag.busy .d{background:var(--warn)}.ag.done .d{background:var(--ok)}
+.ag small{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--dim)}
+.leftfoot{margin-top:auto;border-top:1px solid var(--line);padding:12px 14px;font-family:var(--mono);font-size:11px;color:var(--mut);display:flex;flex-direction:column;gap:5px}
+.leftfoot b{color:var(--tx)}
+/* ---- middle ---- */
+.mid{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--bg)}
+#setbtn{margin:0 8px 8px;width:calc(100% - 16px);display:flex;gap:8px;align-items:center;background:transparent;border:1px solid var(--line);border-radius:8px;color:var(--mut);font-family:var(--mono);font-size:12px;padding:9px 10px;cursor:pointer;text-align:left}
+#setbtn:hover{color:var(--tx);border-color:var(--mut)}
+#setpanel{position:fixed;left:12px;bottom:12px;z-index:60;width:360px;max-height:min(560px,80vh);overflow:auto;background:var(--bg2);border:1px solid var(--line2);border-radius:14px;padding:14px;display:none}
+#setpanel.open{display:block}
+#setpanel h4{margin:0 0 10px;font-family:var(--mono);font-size:10px;letter-spacing:.12em;color:var(--dim)}
+#setpanel .tabs{display:flex;gap:4px;margin-bottom:10px;flex-wrap:wrap}
+#setpanel .tabs button{font-family:var(--mono);font-size:10px;border:1px solid var(--line);background:transparent;color:var(--mut);border-radius:99px;padding:5px 10px;cursor:pointer}
+#setpanel .tabs button.on{background:var(--bg3);color:var(--tx);border-color:var(--mut)}
+#setpanel .tab{display:none}#setpanel .tab.on{display:block}
+#setrow{display:flex;gap:6px;align-items:center;font-family:var(--mono);font-size:11px;color:var(--mut);padding:6px 4px;border-bottom:1px solid var(--line)}
+#setrow:last-child{border-bottom:0}
+#setrow .grow{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#setrow small{color:var(--dim)}
+#setpanel input[type=text],#setpanel input[type=number],#setpanel select{background:var(--bg3);border:1px solid var(--line);border-radius:6px;color:var(--tx);font-family:var(--mono);font-size:11px;padding:6px 8px;min-width:0}
+#setpanel input[type=checkbox],#setpanel input[type=radio]{accent-color:var(--acc)}
+#setpanel .mini{font-family:var(--mono);font-size:10px;background:transparent;border:1px solid var(--line2);border-radius:6px;color:var(--mut);padding:4px 9px;cursor:pointer}
+#setpanel .mini:hover{color:var(--tx)}
+#setpanel .addrow{display:flex;gap:6px;margin-top:8px}
+#setpanel .addrow input{flex:1}
+#setpanel .hint{font-family:var(--mono);font-size:10px;color:var(--dim);line-height:1.6;margin-top:8px}
+#chat{flex:1;overflow:auto;padding:20px 0;min-height:0}
+.turn{max-width:780px;margin:0 auto;padding:0 22px 22px}
+.role{font-family:var(--mono);font-size:11px;color:var(--dim);margin-bottom:7px;display:flex;gap:8px}
+.role .t{margin-left:auto}
+.umsg{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:10px 14px;line-height:1.55}
+.think{border:1px solid var(--line);border-radius:10px;background:var(--bg2);margin:10px 0 0}
+.think>summary{cursor:pointer;list-style:none;display:flex;gap:8px;align-items:center;font-family:var(--mono);font-size:11.5px;color:var(--mut);padding:9px 12px}
+.think>summary::-webkit-details-marker{display:none}
+.think .tb{border-top:1px solid var(--line);padding:10px 12px;font-family:var(--mono);font-size:12px;line-height:1.7;color:var(--mut);white-space:pre-wrap}
+.tool{border:1px solid var(--line);border-radius:10px;background:var(--bg2);margin-top:8px;overflow:hidden}
+.tool .th{display:flex;gap:9px;align-items:center;font-family:var(--mono);font-size:12px;padding:8px 12px;border-bottom:1px solid var(--line)}
+.st{font-size:10px;padding:2px 7px;border-radius:99px;border:1px solid var(--line2);color:var(--mut)}
+.st.run{color:var(--warn);border-color:var(--warn)}
+.st.ok{color:var(--ok);border-color:var(--ok)}
+.tool .th .dur{margin-left:auto;color:var(--dim);font-size:11px}
+.tool .tb2{padding:9px 12px;font-family:var(--mono);font-size:12px;color:var(--mut);line-height:1.65;white-space:pre-wrap}
+.amsg{line-height:1.65;margin-top:10px}
+.copy{margin-left:8px;font-family:var(--mono);font-size:10px;background:transparent;border:1px solid var(--line2);border-radius:5px;color:var(--dim);cursor:pointer;padding:2px 8px}
+.copy:hover{color:var(--tx)}
+.composer{border-top:1px solid var(--line);background:var(--bg2);padding:12px 0}
+.cbox{max-width:780px;margin:0 auto;padding:0 22px}
+.cbox form{display:flex;gap:8px;background:var(--bg3);border:1px solid var(--line2);border-radius:10px;padding:6px 6px 6px 14px}
+.cbox form:focus-within{border-color:var(--mut)}
+.cbox input{flex:1;background:transparent;border:0;outline:none;color:var(--tx);font-size:13.5px;padding:8px 0;font-family:var(--sans)}
+.cbox input::placeholder{color:var(--dim)}
+.cbox button{background:var(--tx);color:var(--bg);border:0;border-radius:7px;font-size:12.5px;font-weight:600;padding:9px 16px;cursor:pointer}
+.cbox button:disabled{opacity:.45;cursor:wait}
+.statusbar{flex:0 0 28px;display:flex;align-items:center;gap:16px;padding:0 16px;border-top:1px solid var(--line);background:var(--bg2);font-family:var(--mono);font-size:11px;color:var(--dim)}
+.statusbar .r{margin-left:auto;display:flex;gap:16px}
+/* ---- right : logs ---- */
+.right{background:var(--bg2);border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.loghead{padding:12px 12px 8px;border-bottom:1px solid var(--line)}
+.loghead .row1{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.loghead h3{padding:0;flex:1}
+.loghead .row2{display:flex;gap:6px}
+.loghead input,.loghead select{font-family:var(--mono);font-size:11px;background:var(--bg3);color:var(--tx);border:1px solid var(--line);border-radius:6px;padding:6px 8px;min-width:0}
+.loghead input{flex:1}
+.iconbtn{font-family:var(--mono);font-size:11px;background:transparent;border:1px solid var(--line);border-radius:6px;color:var(--mut);padding:6px 9px;cursor:pointer}
+.iconbtn:hover{color:var(--tx);border-color:var(--mut)}
+.iconbtn.on{color:var(--acc);border-color:var(--acc)}
+#stream{flex:1;overflow:auto;padding:8px;font-family:var(--mono);font-size:11px;line-height:1.6}
+.lrow{border:1px solid var(--line);border-radius:8px;padding:7px 9px;margin-bottom:6px;cursor:pointer;background:var(--bg)}
+.lrow:hover{border-color:var(--mut)}
+.lrow.open{border-color:var(--acc)}
+.lrow .m{color:var(--dim);display:flex;gap:6px;flex-wrap:wrap}
+.lrow .p{color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px}
+.lrow.open .p{white-space:pre-wrap;word-break:break-word}
+.tag{font-size:9px;padding:1px 6px;border-radius:99px;border:1px solid var(--line2);color:var(--mut)}
+.tag.IN{color:var(--ok);border-color:var(--ok)}.tag.OUT{color:var(--warn);border-color:var(--warn)}
+#veil{position:fixed;inset:0;z-index:50;background:var(--bg);opacity:0;pointer-events:none;transition:opacity .3s ease}
+#veil.show{opacity:1;pointer-events:all}
+.sidebtn{display:none;background:transparent;border:1px solid var(--line2);border-radius:6px;color:var(--mut);font-family:var(--mono);font-size:11px;padding:5px 9px;cursor:pointer}
+@media(max-width:1180px){.app{grid-template-columns:230px minmax(0,1fr) 300px}}
+@media(max-width:980px){
+.app{grid-template-columns:minmax(0,1fr)}
+.left,.right{position:fixed;top:0;bottom:0;width:300px;z-index:40;transition:transform .25s ease}
+.left{left:0;transform:translateX(-100%)}
+.right{right:0;transform:translateX(100%)}
+body.showL .left{transform:none}
+body.showR .right{transform:none}
+.sidebtn{display:block}
+}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+:focus-visible{outline:1px solid var(--acc);outline-offset:2px}
+</style>
+</head>
+<body>
+<div id="veil" aria-hidden="true"></div>
+<div class="app">
+<!-- LEFT -->
+<aside class="left" aria-label="sessions">
+<div class="brand">harness<small>supervisor console</small></div>
+<h3>SESSIONS</h3><div class="sess"><button class="cur"><span>●</span> session-01 — active</button><button id="newsess" class="action">+ new session</button></div>
+<h3>AGENTS</h3><div class="agents" id="agents"></div>
+<div class="leftfoot"><span>model <b>supervisor-1.0</b></span><span>context <b id="ctx">0 / 200k</b></span><span>cost <b id="cost">$0.0000</b></span></div>
+<button id="setbtn" aria-label="settings">⚙ settings</button>
+</aside>
+<div id="setpanel" role="dialog" aria-label="settings"><h4>SETTINGS</h4>
+<div class="tabs"><button data-t="sup" class="on">Supervisor</button><button data-t="skills">Skills</button><button data-t="mcps">MCPs</button><button data-t="guard">Guardrails</button><button data-t="theme">Theme</button></div>
+<div class="tab on" id="tab-sup"></div><div class="tab" id="tab-skills"></div><div class="tab" id="tab-mcps"></div><div class="tab" id="tab-guard"></div><div class="tab" id="tab-theme"><div id="thopts"></div></div>
+</div>
+<!-- MIDDLE -->
+<div class="mid">
+<div id="chat" role="log" aria-live="polite"></div>
+<div class="composer"><div class="cbox"><form id="f"><input id="q" autocomplete="off" aria-label="message" placeholder="Message the supervisor…"/><button id="send">Run</button></form></div></div>
+<div class="statusbar"><button class="sidebtn" id="tglL">☰</button><span id="sb">idle</span><span class="r"><span id="evc">0 events</span><span id="tok">0 tok</span><span id="lat">— ms</span></span><button class="sidebtn" id="tglR">log</button></div>
+</div>
+<!-- RIGHT -->
+<aside class="right" aria-label="event log">
+<div class="loghead">
+<div class="row1"><h3>EVENT LOG · IN / OUT / ALL</h3><button class="iconbtn on" id="tail" title="follow tail">tail</button><button class="iconbtn" id="exp" title="export JSON">exp</button><button class="iconbtn" id="clr" title="clear">clr</button></div>
+<div class="row2"><input id="s" placeholder="filter…" aria-label="filter"/><select id="d" aria-label="dir"><option value="">all</option><option>IN</option><option>OUT</option><option>INTERNAL</option></select></div>
+</div>
+<div id="stream"></div>
+</aside>
+</div>
+<script>
+const LS="agent_demo_logs",BC="agent_demo_bus",THEME_KEY="orbital_theme";
+const $=s=>document.querySelector(s);
+let follow=true;
+const THEMES=[["arctic-frost","arctic · light"],["midnight-galaxy","galaxy · dark"],["ocean-depths","ocean · dark"]];
+function applyTheme(t){if(!THEMES.some(([v])=>v===t))t="arctic-frost";document.documentElement.dataset.theme=t;try{localStorage.setItem(THEME_KEY,t)}catch{}document.querySelectorAll('#thopts input').forEach(r=>r.checked=r.value===t)}
+try{applyTheme(localStorage.getItem(THEME_KEY)||"arctic-frost")}catch{applyTheme("arctic-frost")}
+$("#thopts").innerHTML=THEMES.map(([v,n])=>`<div id="setrow"><input type="radio" name="th" value="${v}"/>${n}</div>`).join("");
+$("#thopts").addEventListener("change",e=>{applyTheme(e.target.value);log("INTERNAL","system","system","theme_change","theme -> "+e.target.value)});
+$("#setbtn").onclick=e=>{e.stopPropagation();$("#setpanel").classList.toggle("open")};
+addEventListener("click",e=>{if(!e.target.closest("#setpanel")&&!e.target.closest("#setbtn"))$("#setpanel").classList.remove("open")});
+document.querySelectorAll("#setpanel .tabs button").forEach(b=>b.onclick=()=>{document.querySelectorAll("#setpanel .tabs button").forEach(x=>x.classList.remove("on"));document.querySelectorAll("#setpanel .tab").forEach(x=>x.classList.remove("on"));b.classList.add("on");$("#tab-"+b.dataset.t).classList.add("on")});
+$("#thopts").innerHTML=THEMES.map(([v,n])=>`<div id="setrow"><input type="radio" name="th" value="${v}" ${document.documentElement.dataset.theme===v?"checked":""}/> ${n}</div>`).join("");
+$("#thopts").addEventListener("change",e=>{applyTheme(e.target.value);log("INTERNAL","system","system","theme_change","theme -> "+e.target.value)});
+/* ---- config: profiles / skills / mcps / guardrails ---- */
+const CFG_KEY="harness_config";
+const CAPS=["research","code","exec","review"];
+function defCfg(){return{active:"generalist",
+profiles:[{id:"generalist",name:"Generalist",domain:"general"},{id:"coder",name:"Code Lead",domain:"software"}],
+skills:[{id:"researcher",name:"researcher",cap:"research",on:true},{id:"coder",name:"coder",cap:"code",on:true},{id:"tools",name:"tools",cap:"exec",on:true},{id:"critic",name:"critic",cap:"review",on:true}],
+mcps:[{id:"local",name:"local-tools",tools:["fetch","exec","write"],on:true}],
+guard:{maxSteps:8,timeoutS:120,costCap:5,approval:false}}}
+function load(){try{const c=JSON.parse(localStorage.getItem(CFG_KEY));if(c&&c.profiles&&c.skills)return c}catch{}return defCfg()}
+function save(c){try{localStorage.setItem(CFG_KEY,JSON.stringify(c))}catch{}}
+function prof(){const c=load();return c.profiles.find(p=>p.id===c.active)||c.profiles[0]}
+function renderSettings(){const c=load();
+$("#tab-sup").innerHTML=c.profiles.map(p=>`<div id="setrow"><input type="radio" name="prof" value="${p.id}" ${p.id===c.active?"checked":""}/><span class="grow">${p.name} <small>· ${p.domain}</small></span>${c.profiles.length>1?`<button class="mini" data-delprof="${p.id}">del</button>`:""}</div>`).join("")+`<div class="addrow"><input id="np-name" type="text" placeholder="name"/><input id="np-dom" type="text" placeholder="domain"/><button class="mini" id="np-add">add</button></div><div class="hint">Active profile supervises the next run.</div>`;
+$("#tab-skills").innerHTML=c.skills.map(s=>`<div id="setrow"><input type="checkbox" data-skill="${s.id}" ${s.on?"checked":""}/><span class="grow">${s.name} <small>· ${s.cap}</small></span><select data-cap="${s.id}">${CAPS.map(k=>`<option ${k===s.cap?"selected":""}>${k}</option>`).join("")}</select><button class="mini" data-delskill="${s.id}">del</button></div>`).join("")+`<div class="addrow"><input id="ns-name" type="text" placeholder="skill / agent name"/><select id="ns-cap">${CAPS.map(k=>`<option>${k}</option>`).join("")}</select><button class="mini" id="ns-add">add</button></div><div class="hint">Skills are worker agents. Disable one and the supervisor spawns cover at runtime.</div>`;
+$("#tab-mcps").innerHTML=c.mcps.map(m=>`<div id="setrow"><input type="checkbox" data-mcp="${m.id}" ${m.on?"checked":""}/><span class="grow">${m.name} <small>· ${m.tools.join(", ")}</small></span><button class="mini" data-delmcp="${m.id}">del</button></div>`).join("")+`<div class="addrow"><input id="nm-name" type="text" placeholder="server name"/><input id="nm-tools" type="text" placeholder="tools, csv"/><button class="mini" id="nm-add">add</button></div><div class="hint">Enabled servers grant tools to the exec agent.</div>`;
+const g=c.guard;
+$("#tab-guard").innerHTML=`<div id="setrow"><span class="grow">max steps / run</span><input id="g-steps" type="number" min="1" max="12" value="${g.maxSteps}" style="width:64px"/></div><div id="setrow"><span class="grow">timeout (s)</span><input id="g-time" type="number" min="10" value="${g.timeoutS}" style="width:64px"/></div><div id="setrow"><span class="grow">cost cap ($)</span><input id="g-cost" type="number" min="1" value="${g.costCap}" style="width:64px"/></div><div id="setrow"><input id="g-appr" type="checkbox" ${g.approval?"checked":""}/><span class="grow">approval gate <small>· human approves final</small></span></div><div class="hint">Budgets + approval are enforced on the next run.</div>`;
+applyTheme(localStorage.getItem(THEME_KEY)||"arctic-frost")}
+$("#setpanel").addEventListener("change",e=>{const c=load();const t=e.target;
+if(t.name==="prof"){c.active=t.value;save(c);renderSettings();log("INTERNAL","system","system","config","active supervisor -> "+t.value);return}
+if(t.dataset.skill){c.skills.find(s=>s.id===t.dataset.skill).on=t.checked;save(c);renderSettings();agents();log("INTERNAL","system","system","config","skill "+t.dataset.skill+" "+(t.checked?"enabled":"disabled"));return}
+if(t.dataset.cap){c.skills.find(s=>s.id===t.dataset.cap).cap=t.value;save(c);renderSettings();log("INTERNAL","system","system","config","skill "+t.dataset.cap+" capability -> "+t.value);return}
+if(t.dataset.mcp){c.mcps.find(m=>m.id===t.dataset.mcp).on=t.checked;save(c);renderSettings();log("INTERNAL","system","system","config","mcp "+t.dataset.mcp+" "+(t.checked?"enabled":"disabled"));return}
+if(t.id==="g-steps"){c.guard.maxSteps=Math.max(1,Math.min(12,+t.value||8));save(c);log("INTERNAL","system","system","config","guard maxSteps -> "+c.guard.maxSteps);return}
+if(t.id==="g-time"){c.guard.timeoutS=+t.value||120;save(c);return}
+if(t.id==="g-cost"){c.guard.costCap=+t.value||5;save(c);return}
+if(t.id==="g-appr"){c.guard.approval=t.checked;save(c);log("INTERNAL","system","system","config","approval gate "+(t.checked?"ON":"OFF"));return}});
+$("#setpanel").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;const c=load();
+if(b.id==="np-add"){const n=$("#np-name").value.trim(),d=$("#np-dom").value.trim()||"general";if(!n)return;const id=n.toLowerCase().replace(/[^a-z0-9]+/g,"-");c.profiles.push({id,name:n,domain:d});c.active=id;save(c);renderSettings();log("INTERNAL","system","system","config","supervisor profile created: "+n+" ("+d+")");return}
+if(b.dataset.delprof){c.profiles=c.profiles.filter(p=>p.id!==b.dataset.delprof);if(c.active===b.dataset.delprof)c.active=c.profiles[0].id;save(c);renderSettings();log("INTERNAL","system","system","config","profile deleted: "+b.dataset.delprof);return}
+if(b.id==="ns-add"){const n=$("#ns-name").value.trim().toLowerCase().replace(/[^a-z0-9]+/g,"-")||("agent-"+Date.now()%1000);c.skills.push({id:n,name:n,cap:$("#ns-cap").value,on:true});save(c);renderSettings();agents();log("INTERNAL","system","system","config","skill added: "+n);return}
+if(b.dataset.delskill){c.skills=c.skills.filter(s=>s.id!==b.dataset.delskill);save(c);renderSettings();agents();log("INTERNAL","system","system","config","skill deleted: "+b.dataset.delskill);return}
+if(b.id==="nm-add"){const n=$("#nm-name").value.trim()||"mcp-"+Date.now()%1000;const tools=$("#nm-tools").value.split(",").map(s=>s.trim()).filter(Boolean);c.mcps.push({id:n.toLowerCase().replace(/[^a-z0-9]+/g,"-"),name:n,tools:tools.length?tools:["fetch"],on:true});save(c);renderSettings();log("INTERNAL","system","system","config","mcp attached: "+n);return}
+if(b.dataset.delmcp){c.mcps=c.mcps.filter(m=>m.id!==b.dataset.delmcp);save(c);renderSettings();log("INTERNAL","system","system","config","mcp detached: "+b.dataset.delmcp);return}});
+function log(dir,source,target,type,payload){const e={ts:new Date().toISOString(),dir,source,target,type,payload:String(payload).slice(0,2000)};try{const a=JSON.parse(localStorage.getItem(LS)||"[]");a.push(e);localStorage.setItem(LS,JSON.stringify(a.slice(-1000)))}catch{}try{new BroadcastChannel(BC).postMessage(e)}catch{}counts();renderRow(e);return e}
+const bill={user_message:40,thinking:120,task_assign:60,task_result:220,final_answer:180};
+let toks=0;
+function counts(){try{const a=JSON.parse(localStorage.getItem(LS)||"[]");$("#evc").textContent=a.length+" events";toks=a.reduce((n,e)=>n+(bill[e.type]||50),0);$("#tok").textContent=(toks/1000).toFixed(1)+"k tok";$("#ctx").textContent=(toks/1000).toFixed(1)+"k / 200k";$("#cost").textContent="$"+(toks*0.0000032).toFixed(4)}catch{}}
+const esc=s=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;");
+function match(e){const q=$("#s").value.toLowerCase(),d=$("#d").value;return(!d||e.dir===d)&&(!q||(e.payload+e.source+e.target).toLowerCase().includes(q))}
+function rowHTML(e){return `<div class="m"><span class="tag ${e.dir}">${e.dir}</span><span>${e.ts.slice(11,19)}</span><span>${esc(e.source)}→${esc(e.target)}</span></div><div class="p" title="${esc(e.type)}">${esc(e.payload)}</div>`}
+function renderRow(e){if(!match(e))return;const d=document.createElement("div");d.className="lrow";d.innerHTML=rowHTML(e);d.title=e.type;d.onclick=()=>d.classList.toggle("open");$("#stream").appendChild(d);while($("#stream").children.length>300)$("#stream").firstChild.remove();if(follow)$("#stream").scrollTop=1e9}
+function renderAll(){$("#stream").innerHTML="";try{JSON.parse(localStorage.getItem(LS)||"[]").slice(-300).forEach(renderRow)}catch{}}
+$("#s").addEventListener("input",renderAll);$("#d").addEventListener("change",renderAll);
+$("#tail").onclick=e=>{follow=!follow;e.currentTarget.classList.toggle("on",follow);if(follow)$("#stream").scrollTop=1e9};
+$("#clr").onclick=()=>{localStorage.setItem(LS,"[]");renderAll();counts()};
+$("#exp").onclick=()=>{const b=new Blob([localStorage.getItem(LS)||"[]"],{type:"application/json"});const u=URL.createObjectURL(b);const x=document.createElement("a");x.href=u;x.download="harness-logs.json";x.click();setTimeout(()=>URL.revokeObjectURL(u),2000)};
+addEventListener("storage",e=>{if(e.key===LS){renderAll();counts()}if(e.key===THEME_KEY&&e.newValue)applyTheme(e.newValue)});
+try{new BroadcastChannel(BC).onmessage=e=>{renderRow(e.data);counts()}}catch{}
+let ST={supervisor:"idle"};let SPAWNED=[];
+function roster(){const c=load();const r=[{id:"supervisor",role:"orchestrator · "+prof().name,badge:""}];c.skills.filter(s=>s.on).forEach(s=>r.push({id:s.id,role:s.cap,badge:""}));SPAWNED.forEach(s=>r.push({id:s.id,role:s.cap+" · for "+s.parent,badge:"spawned"}));return r}
+function agents(){if(!ST.supervisor)ST={supervisor:"idle"};$("#agents").innerHTML=roster().map(a=>{const s=ST[a.id]||"idle";return `<div class="ag ${s==="idle"?"":s==="done"?"done":"busy"}"><span class="d"></span>${a.id}${a.badge?` <span class="tag OUT">${a.badge}</span>`:""}<small>${a.role} · ${s}</small></div>`}).join("")}
+function set(a,s){ST[a]=s;agents()}
+function umsg(t){const d=document.createElement("div");d.className="turn";d.innerHTML=`<div class="role">you<span class="t">${new Date().toISOString().slice(11,19)}</span></div><div class="umsg"></div>`;d.querySelector(".umsg").textContent=t;$("#chat").appendChild(d);$("#chat").scrollTop=1e9}
+function amsgStart(){const d=document.createElement("div");d.className="turn";d.innerHTML=`<div class="role">supervisor<span class="t">${new Date().toISOString().slice(11,19)}</span></div><details class="think" open><summary><span>▸</span> thinking <span class="thn"></span></summary><div class="tb"></div></details><div class="tools"></div><div class="amsg" style="display:none"></div>`;$("#chat").appendChild(d);$("#chat").scrollTop=1e9;return d}
+function thAdd(turn,t){const tb=turn.querySelector(".tb");tb.textContent+=(tb.textContent?"\n":"")+t;turn.querySelector(".thn").textContent="· "+tb.textContent.split("\n").length+" steps";$("#chat").scrollTop=1e9}
+function toolAdd(turn,name,arg){const w=turn.querySelector(".tools");const d=document.createElement("div");d.className="tool";d.innerHTML=`<div class="th"><span class="st run">running</span><span></span><span class="dur">…</span></div><div class="tb2"></div>`;d.querySelector(".th span:nth-child(2)").textContent=name+"  "+arg;w.appendChild(d);$("#chat").scrollTop=1e9;return d}
+function toolDone(el,out,ms){el.querySelector(".st").className="st ok";el.querySelector(".st").textContent="done";el.querySelector(".dur").textContent=ms+"ms";el.querySelector(".tb2").textContent=out;$("#chat").scrollTop=1e9}
+function final(turn,t){const f=turn.querySelector(".amsg");f.style.display="";f.textContent=t;const b=document.createElement("button");b.className="copy";b.textContent="copy";b.onclick=()=>{try{navigator.clipboard.writeText(t);b.textContent="copied";setTimeout(()=>b.textContent="copy",1200)}catch{}};f.appendChild(b);turn.querySelector(".think").open=false;$("#chat").scrollTop=1e9}
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function needAgent(cap){const c=load();const s=c.skills.find(s=>s.on&&s.cap===cap);return s?s.id:null}
+function mcpTools(){const c=load();const t=c.mcps.filter(m=>m.on).flatMap(m=>m.tools);return t.length?t:["built-in"]}
+let spawnN=0;
+async function run(q){const t0=performance.now();const cfg=load(),g=cfg.guard,p=prof();$("#send").disabled=true;$("#sb").textContent="working…";SPAWNED=[];set("supervisor","busy");
+log("IN","user","supervisor","user_message",q);umsg(q);
+const turn=amsgStart();turn.querySelector(".role").firstChild.textContent=p.name+" · "+p.domain+" ";
+thAdd(turn,"intent parsed · profile "+p.name+" ("+p.domain+")");log("INTERNAL","supervisor","supervisor","thinking","parse intent; plan fan-out");log("INTERNAL","supervisor","supervisor","policy",`guardrails: maxSteps=${g.maxSteps} timeout=${g.timeoutS}s costCap=$${g.costCap} approval=${g.approval?"ON":"OFF"}`);await sleep(420);
+const NEEDS=[["research","read_context","3 patterns for request"],["code","draft_change","solution outline"],["exec","exec["+mcpTools().join("|")+"]","scan + fetch"],["review","review_diff","risks + correctness"]];
+thAdd(turn,"plan: "+NEEDS.map(n=>n[0]).join("→"));
+let steps=0;
+for(const [cap,tool,arg] of NEEDS){if(steps>=g.maxSteps){thAdd(turn,"step budget hit ("+g.maxSteps+") · remaining needs dropped");log("INTERNAL","supervisor","supervisor","thinking","maxSteps hit — truncating plan");break}
+let agent=needAgent(cap),spawned=null;
+if(!agent){spawnN++;agent="spawn-"+cap+"-"+spawnN;spawned={id:agent,cap,parent:cap};SPAWNED.push(spawned);set(agent,"idle");thAdd(turn,"capability miss: "+cap+" · spawning "+agent);log("OUT","supervisor","system","agent_spawned",JSON.stringify({id:agent,cap,tools:tool,budget:3,parent:cap}))}
+set(agent,"busy");const el=toolAdd(turn,"supervisor → "+agent+(spawned?" (spawned)":""),tool+" "+arg);log("OUT","supervisor",agent,"task_assign",tool+": "+arg);thAdd(turn,"dispatch → "+agent);await sleep(340);steps++;const ms=280+Math.floor(Math.random()*500);const out=agent+" ok · "+arg+" · "+q.slice(0,44);toolDone(el,out,ms);set(agent,"done");log("IN",agent,"supervisor","task_result",out);thAdd(turn,"← "+agent+" returned ("+ms+"ms)")}
+set("supervisor","busy");thAdd(turn,"merging partials · 1 conflict resolved · composing");log("INTERNAL","supervisor","supervisor","thinking","synthesize + compose");await sleep(520);
+const f="["+p.name+"] merged results for \""+q.slice(0,64)+"\": context in, change drafted, tool signals captured, review signed off. Full trace in the log sidebar.";
+if(g.approval){thAdd(turn,"approval gate: waiting for human");log("INTERNAL","supervisor","supervisor","thinking","approval requested");const ok=await askApproval(turn,f);if(!ok){log("INTERNAL","user","supervisor","approval_denied","final withheld by human");thAdd(turn,"denied by human · run closed");return finish(t0)}log("INTERNAL","user","supervisor","approval_granted","final released")}
+log("OUT","supervisor","user","final_answer",f);final(turn,f);finish(t0)}
+function finish(t0){SPAWNED.forEach(s=>log("OUT","supervisor","system","agent_retired",s.id+" · task complete"));SPAWNED=[];ST={supervisor:"idle"};agents();$("#send").disabled=false;$("#sb").textContent="idle · "+Math.round(performance.now()-t0)+"ms"}
+function askApproval(turn,text){return new Promise(res=>{const d=document.createElement("div");d.innerHTML=`<div class="tool"><div class="th"><span class="st run">approval needed</span><span>release final answer?</span></div><div class="tb2"></div></div>`;const prev=document.createElement("div");prev.style.cssText="font-size:13px;margin:8px 0";prev.textContent=text;d.querySelector(".tb2").appendChild(prev);const ok=document.createElement("button"),no=document.createElement("button");ok.className="copy";no.className="copy";ok.textContent="approve";no.textContent="reject";ok.onclick=()=>{d.remove();res(true)};no.onclick=()=>{d.remove();res(false)};d.querySelector(".tb2").append(ok,no);turn.appendChild(d);$("#chat").scrollTop=1e9})}
+$("#f").addEventListener("submit",e=>{e.preventDefault();const v=$("#q").value.trim();if(!v)return;$("#q").value="";run(v)});
+$("#newsess").addEventListener("click",()=>{$("#chat").innerHTML="";log("INTERNAL","system","system","session_start","new session opened");$("#sb").textContent="idle"});
+$("#tglL").onclick=()=>{document.body.classList.toggle("showL");document.body.classList.remove("showR")};
+$("#tglR").onclick=()=>{document.body.classList.toggle("showR");document.body.classList.remove("showL")};
+renderSettings();agents();counts();renderAll();log("INTERNAL","system","system","session_start","single-page console loaded");
+</script>
+</body>
+</html>

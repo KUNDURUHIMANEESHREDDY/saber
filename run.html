@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>harness — run view</title>
+<style>
+:root{--bg:#f4f7fa;--bg2:#ffffff;--bg3:#e9eff5;--line:#d7e0e9;--line2:#b9c7d4;--tx:#16283d;--mut:#5c7186;--dim:#8fa1b1;--acc:#2f6db3;--warn:#b25e09;--mono:ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;--sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+html[data-theme="midnight-galaxy"]{--bg:#0c0e12;--bg2:#11141a;--bg3:#171b23;--line:#232936;--tx:#e6e9ef;--mut:#8b94a5;--dim:#5b6474;--acc:#4cc38a;--warn:#e5a158}
+html[data-theme="ocean-depths"]{--bg:#101820;--bg2:#16222c;--bg3:#1c2a35;--line:#24333f;--tx:#eef4f6;--mut:#8ba3b0;--acc:#2d8b8b}
+html[data-theme="arctic-frost"]{--bg:#f4f7fa;--bg2:#e9eff5;--bg3:#dfe7ef;--line:#c9d5e1;--tx:#16283d;--mut:#5c7186;--acc:#2f6db3}
+*{box-sizing:border-box}html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--tx);font-family:var(--sans);font-size:14px;display:flex;flex-direction:column;height:100vh;overflow:hidden}
+.topbar{height:48px;flex:0 0 48px;display:flex;align-items:center;gap:12px;padding:0 14px;border-bottom:1px solid var(--line);background:var(--bg2)}
+.crumb{font-family:var(--mono);font-size:12px;color:var(--mut)}
+.crumb b{color:var(--tx)}
+.live{margin-left:auto;display:flex;gap:8px;align-items:center;font-family:var(--mono);font-size:11px;color:var(--mut)}
+select.f,a.back{font-family:var(--mono);font-size:11px;background:var(--bg3);color:var(--tx);border:1px solid var(--line);border-radius:6px;padding:6px 9px;text-decoration:none}
+.goalbar{flex:0 0 auto;display:flex;gap:8px;padding:12px 0;background:var(--bg);border-bottom:1px solid var(--line)}
+.goalwrap{max-width:1180px;width:100%;margin:0 auto;padding:0 20px;display:flex;gap:8px}
+.goalwrap input{flex:1;background:var(--bg3);border:1px solid var(--line2);border-radius:8px;color:var(--tx);font-size:13.5px;padding:10px 14px;outline:none;font-family:var(--sans)}
+.goalwrap input:focus{border-color:var(--mut)}
+.goalwrap button{background:var(--tx);color:var(--bg);border:0;border-radius:8px;font-weight:600;font-size:13px;padding:0 22px;cursor:pointer}
+.goalwrap button:disabled{opacity:.45}
+.main{flex:1;display:flex;min-height:0;max-width:1180px;width:100%;margin:0 auto}
+.tl{flex:1;overflow:auto;padding:18px 20px;min-width:0}
+.runhead{font-family:var(--mono);font-size:11px;color:var(--dim);margin:0 0 4px}
+.rungoal{font-size:19px;font-weight:650;letter-spacing:-.01em;margin:0 0 16px;line-height:1.4}
+.steps{position:relative;padding-left:26px}
+.steps::before{content:"";position:absolute;left:8px;top:8px;bottom:8px;width:2px;background:var(--line)}
+.step{position:relative;background:var(--bg2);border:1px solid var(--line);border-radius:10px;margin-bottom:10px;overflow:hidden}
+.step::before{content:"";position:absolute;left:-23px;top:18px;width:10px;height:10px;border-radius:50%;background:var(--dim)}
+.step.run::before{background:var(--warn)}.step.done::before{background:var(--acc)}
+.step .h{display:flex;gap:10px;align-items:center;padding:11px 14px;cursor:pointer;font-size:13.5px}
+.step .h .n{font-family:var(--mono);font-size:11px;color:var(--dim)}
+.step .h .ag{font-family:var(--mono);font-size:11px;color:var(--mut);border:1px solid var(--line2);border-radius:99px;padding:2px 9px}
+.step .h .ms{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--dim)}
+.step .art{border-top:1px solid var(--line);padding:11px 14px;font-family:var(--mono);font-size:12px;color:var(--mut);line-height:1.7;white-space:pre-wrap;display:none}
+.step.open .art{display:block}
+.step .st{font-family:var(--mono);font-size:10px;padding:2px 8px;border-radius:99px;border:1px solid var(--line2);color:var(--mut)}
+.step.run .st{color:var(--warn);border-color:var(--warn)}.step.done .st{color:var(--acc);border-color:var(--acc)}
+.insp{width:340px;flex:0 0 340px;border-left:1px solid var(--line);background:var(--bg2);display:flex;flex-direction:column;min-height:0}
+.insp h2{font-family:var(--mono);font-size:10px;letter-spacing:.12em;color:var(--dim);margin:0;padding:14px 14px 8px}
+#thinkbox{border-bottom:1px solid var(--line);padding:0 14px 12px;font-family:var(--mono);font-size:11.5px;color:var(--mut);line-height:1.8;max-height:180px;overflow:auto}
+#logmini{flex:1;overflow:auto;padding:8px 14px;font-family:var(--mono);font-size:11px;color:var(--dim);line-height:1.8}
+#logmini div b{color:var(--mut);font-weight:400}
+#veil{position:fixed;inset:0;z-index:50;background:var(--bg);opacity:0;pointer-events:none;transition:opacity .3s ease}
+#veil.show{opacity:1;pointer-events:all}
+@media(max-width:900px){.insp{display:none}}
+:focus-visible{outline:1px solid var(--acc);outline-offset:2px}
+</style>
+</head>
+<body>
+<div id="veil" aria-hidden="true"></div>
+<div class="topbar"><div class="crumb"><b>harness</b> / run view</div>
+<div class="live"><span id="evc">0 events</span>
+<select class="f" id="theme" aria-label="theme"><option value="midnight-galaxy">galaxy</option><option value="ocean-depths">ocean</option><option value="arctic-frost">arctic</option></select>
+<a class="back" href="index.html">← console</a><a class="back" href="logs.html">full log</a></div></div>
+<div class="goalbar"><div class="goalwrap"><input id="q" autocomplete="off" aria-label="goal" placeholder="One goal — e.g. add CSV export to the dashboard…"/><button id="send">Run</button></div></div>
+<div class="main">
+<div class="tl" id="tl"><p class="runhead">NO RUN YET</p><p style="color:var(--dim)">Enter a goal above. The supervisor decomposes it into steps, assigns each to an agent, and the inspector shows thinking + raw log.</p></div>
+<aside class="insp" aria-label="inspector"><h2>SUPERVISOR THINKING</h2><div id="thinkbox">idle</div><h2>RUN LOG</h2><div id="logmini"></div></aside>
+</div>
+<script>
+const LS="agent_demo_logs",BC="agent_demo_bus",THEME_KEY="orbital_theme",$=s=>document.querySelector(s);
+function applyTheme(t){document.documentElement.dataset.theme=t==="midnight-galaxy"?"":t;try{localStorage.setItem(THEME_KEY,t)}catch{}const s=$("#theme");if(s&&[...s.options].some(o=>o.value===t))s.value=t}
+try{applyTheme(localStorage.getItem(THEME_KEY)||"arctic-frost")}catch{}
+$("#theme").addEventListener("change",e=>{applyTheme(e.target.value);log("INTERNAL","system","system","theme_change","theme -> "+e.target.value)});
+function log(dir,source,target,type,payload){const e={ts:new Date().toISOString(),dir,source,target,type,payload:String(payload).slice(0,2000)};try{const a=JSON.parse(localStorage.getItem(LS)||"[]");a.push(e);localStorage.setItem(LS,JSON.stringify(a.slice(-1000)))}catch{}try{new BroadcastChannel(BC).postMessage(e)}catch{}mini(e);counts();return e}
+function counts(){try{$("#evc").textContent=JSON.parse(localStorage.getItem(LS)||"[]").length+" events"}catch{}}
+function mini(e){const d=document.createElement("div");d.innerHTML=`<b>${e.ts.slice(11,19)} ${e.dir}</b> ${e.source}→${e.target} [${e.type}]`;$("#logmini").prepend(d);while($("#logmini").children.length>40)$("#logmini").lastChild.remove()}
+function think(t){const b=$("#thinkbox");if(b.dataset.i!=="1"){b.innerHTML="";b.dataset.i="1"}const d=document.createElement("div");d.textContent="› "+t;b.appendChild(d);b.scrollTop=1e9}
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+let n=0;
+function step(agent,title){n++;const d=document.createElement("div");d.className="step run";d.innerHTML=`<div class="h"><span class="n">S${n}</span><span class="ag">${agent}</span><span class="ti"></span><span class="st">running</span><span class="ms">…</span></div><div class="art"></div>`;d.querySelector(".ti").textContent=title;d.querySelector(".h").onclick=()=>d.classList.toggle("open");$("#tl").appendChild(d);return d}
+function stepDone(el,artifact,ms){el.classList.remove("run");el.classList.add("done","open");el.querySelector(".st").textContent="done";el.querySelector(".ms").textContent=ms+"ms";el.querySelector(".art").textContent=artifact}
+async function run(q){$("#send").disabled=true;$("#tl").innerHTML=`<p class="runhead">RUN · ${new Date().toISOString().slice(11,19)}</p><p class="rungoal"></p>`;$("#tl").querySelector(".rungoal").textContent=q;$("#thinkbox").innerHTML="";$("#thinkbox").dataset.i="1";$("#logmini").innerHTML="";n=0;
+log("IN","user","supervisor","user_message",q);think("goal parsed · decomposing into steps");await sleep(400);
+const plan=[["researcher","Survey existing patterns","3 candidate approaches + tradeoffs for: "+q.slice(0,50)],["coder","Draft the change","step-by-step implementation, files touched, edge cases"], ["tools","Gather evidence","sim scan + fetch · 2 signals captured"],["critic","Review the plan","1 risk flagged, 1 correction required"],["supervisor","Merge + finalize","conflict resolved · final answer composed"]];
+log("INTERNAL","supervisor","supervisor","thinking","plan: "+plan.length+" steps");think("plan: "+plan.map(p=>p[1]).join(" → "));
+for(const [ag,ti,art] of plan){const el=step(ag,ti);log("OUT","supervisor",ag,"task_assign",ti);think("dispatch → "+ag+": "+ti);await sleep(520);const ms=300+Math.floor(Math.random()*600);stepDone(el,art+"  ["+ms+"ms]",ms);log("IN",ag,"supervisor","task_result",art);think("← "+ag+" done ("+ms+"ms)")}
+think("run complete · trace on the bus");log("OUT","supervisor","user","final_answer","run complete: "+q.slice(0,60));$("#send").disabled=false}
+document.querySelector(".goalwrap").addEventListener("submit",e=>e.preventDefault());
+$("#send").addEventListener("click",()=>{const v=$("#q").value.trim();if(!v)return;$("#q").value="";run(v)});
+$("#q").addEventListener("keydown",e=>{if(e.key==="Enter"){const v=$("#q").value.trim();if(!v)return;$("#q").value="";run(v)}});
+document.querySelectorAll("a.back").forEach(a=>a.addEventListener("click",e=>{if(matchMedia("(prefers-reduced-motion: reduce)").matches)return;e.preventDefault();const h=e.currentTarget.href;$("#veil").classList.add("show");setTimeout(()=>location.href=h,300)}));
+counts();log("INTERNAL","system","system","session_start","run view loaded");
+</script>
+</body>
+</html>
