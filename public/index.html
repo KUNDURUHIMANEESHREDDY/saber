@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>OVERLORD â€” Agent Console</title>
+<title>OVERLORD - Agent Console</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -330,6 +330,7 @@ html[data-theme="dark"] .market-badge.template{background:#3b2d13;color:#fcd34d;
       <nav class="settings-nav">
         <button class="set-nav-item active" data-sub="supervisor"><i class="ti ti-crown"></i><span>Supervisor</span></button>
         <button class="set-nav-item" data-sub="agents"><i class="ti ti-users"></i><span>Worker Agents</span></button>
+        <button class="set-nav-item" data-sub="models"><i class="ti ti-cpu"></i><span>Models</span></button>
         <button class="set-nav-item" data-sub="marketplace"><i class="ti ti-building-store"></i><span>Marketplace</span><span class="badge" style="margin-left:auto;font-size:8px;padding:2px 5px;background:var(--blue);color:#fff">Store</span></button>
         <button class="set-nav-item" data-sub="mcps"><i class="ti ti-plug"></i><span>MCPs &amp; Tools</span></button>
         <button class="set-nav-item" data-sub="guardrails"><i class="ti ti-shield-check"></i><span>Guardrails</span></button>
@@ -476,16 +477,95 @@ html[data-theme="dark"] .market-badge.template{background:#3b2d13;color:#fcd34d;
               </div>
               <div class="market-filters">
                 <button class="market-filter-btn active" data-marketfilter="all">All</button>
-                <button class="market-filter-btn" data-marketfilter="skill">Skills</button>
+                <button class="market-filter-btn" data-marketfilter="local">Local Library (23)</button>
+                <button class="market-filter-btn" data-marketfilter="design">Design &amp; UI</button>
+                <button class="market-filter-btn" data-marketfilter="engineering">Engineering</button>
+                <button class="market-filter-btn" data-marketfilter="git">Git &amp; PRs</button>
                 <button class="market-filter-btn" data-marketfilter="tool">Tools</button>
                 <button class="market-filter-btn" data-marketfilter="mcp">MCP Servers</button>
-                <button class="market-filter-btn" data-marketfilter="template">Agent Templates</button>
                 <button class="market-filter-btn" data-marketfilter="installed">Installed</button>
               </div>
             </div>
 
             <!-- Marketplace Grid Container -->
             <div class="market-grid" id="marketGridContainer"></div>
+          </div>
+        </div>
+
+        <!-- Sub-page: Models -->
+        <div class="sub-pane" id="pane-models" style="display:none">
+          <div class="sub-card">
+            <div class="sub-card-title">
+              <span>Active AI Models</span>
+              <span id="modelsCountBadge" class="badge" style="background:var(--blue-soft);color:var(--blue);font-size:9px">4 Models</span>
+            </div>
+            <div class="sub-card-desc">Configure LLM providers, orchestrator routing, reasoning models, and local inferences.</div>
+
+            <!-- Default Orchestrator Model Selector -->
+            <div class="set-row" style="padding:10px 0 14px;border-bottom:1px solid var(--border)">
+              <div>
+                <strong>Default Orchestrator Model</strong>
+                <div style="font-size:10px;color:var(--muted);margin-top:2px">Primary model used by the supervisor for intent decomposition and synthesis</div>
+              </div>
+              <select id="defaultModelSelect" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-weight:600"></select>
+            </div>
+
+            <!-- Models Registry List -->
+            <div id="modelsRegistryList" style="margin-top:12px"></div>
+
+            <!-- Add Custom Model Form -->
+            <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border)">
+              <div style="font-size:11px;font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:6px">
+                <i class="ti ti-plus"></i> Add Model or Endpoint
+              </div>
+              <div style="display:grid;grid-template-columns:1.2fr 1fr 1fr 100px auto;gap:8px;align-items:center;flex-wrap:wrap">
+                <input id="newModelName" placeholder="Model Name (e.g. Llama 3.3 70B)" style="height:32px;border:1px solid var(--border);border-radius:6px;padding:0 9px;font-size:11px;background:var(--surface);color:var(--text)" />
+                <input id="newModelProvider" placeholder="Provider (e.g. Ollama, Groq)" style="height:32px;border:1px solid var(--border);border-radius:6px;padding:0 9px;font-size:11px;background:var(--surface);color:var(--text)" />
+                <input id="newModelDesc" placeholder="Description / Specialty" style="height:32px;border:1px solid var(--border);border-radius:6px;padding:0 9px;font-size:11px;background:var(--surface);color:var(--text)" />
+                <select id="newModelTag" style="height:32px;border:1px solid var(--border);border-radius:6px;padding:0 8px;font-size:11px;background:var(--surface);color:var(--text)">
+                  <option value="General">General</option>
+                  <option value="Reasoning">Reasoning</option>
+                  <option value="Code">Code</option>
+                  <option value="Fast">Fast</option>
+                  <option value="Local">Local</option>
+                </select>
+                <button id="newModelBtn" class="primary" style="height:32px;padding:0 14px;font-size:11px;font-weight:600;display:inline-flex;align-items:center;gap:4px"><i class="ti ti-plus"></i> Add Model</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Provider API Keys & Endpoints Card -->
+          <div class="sub-card">
+            <div class="sub-card-title">Provider Connection Endpoints</div>
+            <div class="sub-card-desc">Configure base URLs and API credentials for cloud and self-hosted model providers.</div>
+            <div class="set-row">
+              <div>
+                <strong>Anthropic API Key</strong>
+                <div style="font-size:10px;color:var(--muted)">For Claude 3.5 / 3.7 models</div>
+              </div>
+              <input id="cfg-key-anthropic" type="password" placeholder="sk-ant-api..." style="width:260px;padding:6px 9px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:11px" />
+            </div>
+            <div class="set-row">
+              <div>
+                <strong>OpenAI API Key</strong>
+                <div style="font-size:10px;color:var(--muted)">For GPT-4o and o-series reasoning models</div>
+              </div>
+              <input id="cfg-key-openai" type="password" placeholder="sk-proj-..." style="width:260px;padding:6px 9px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:11px" />
+            </div>
+            <div class="set-row">
+              <div>
+                <strong>DeepSeek API Key</strong>
+                <div style="font-size:10px;color:var(--muted)">For DeepSeek V3 and DeepSeek R1 reasoning</div>
+              </div>
+              <input id="cfg-key-deepseek" type="password" placeholder="sk-..." style="width:260px;padding:6px 9px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:11px" />
+            </div>
+            <div class="set-row">
+              <div>
+                <strong>Ollama / Local Base URL</strong>
+                <div style="font-size:10px;color:var(--muted)">Local endpoint for open-weights models (Qwen, Llama, Mistral)</div>
+              </div>
+              <input id="cfg-url-ollama" type="text" placeholder="http://localhost:11434" style="width:260px;padding:6px 9px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:11px" />
+            </div>
           </div>
         </div>
 

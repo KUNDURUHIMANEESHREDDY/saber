@@ -174,14 +174,8 @@ if ($("#message")) {
 const modelPicker = $("#modelPicker");
 const modelTrigger = $("#modelTrigger");
 const modelMenu = $("#modelMenu");
-if (modelTrigger && modelMenu) {
-  modelTrigger.onclick = (e) => {
-    e.stopPropagation();
-    const isOpen = modelMenu.style.display !== "none";
-    modelMenu.style.display = isOpen ? "none" : "flex";
-    modelPicker.classList.toggle("open", !isOpen);
-    modelTrigger.setAttribute("aria-expanded", String(!isOpen));
-  };
+
+function wireModelOptClicks() {
   $$(".model-opt").forEach((opt) => {
     opt.onclick = (e) => {
       e.stopPropagation();
@@ -192,12 +186,49 @@ if (modelTrigger && modelMenu) {
         o.classList.toggle("active", o === opt);
         o.setAttribute("aria-selected", String(o === opt));
       });
-      modelMenu.style.display = "none";
-      modelPicker.classList.remove("open");
-      modelTrigger.setAttribute("aria-expanded", "false");
+      if (modelMenu) modelMenu.style.display = "none";
+      if (modelPicker) modelPicker.classList.remove("open");
+      if (modelTrigger) modelTrigger.setAttribute("aria-expanded", "false");
       trace(`Orchestrator model set to ${model}`);
     };
   });
+}
+
+function syncComposerModels() {
+  if (!CFG || !Array.isArray(CFG.models) || !modelMenu) return;
+  const activeModels = CFG.models.filter((m) => m.on);
+  if (!activeModels.length) return;
+  const curModel = $("#model") ? $("#model").value : "";
+  const def = CFG.models.find((m) => m.default) || activeModels[0];
+  const activeVal = activeModels.some((m) => m.name === curModel) ? curModel : def.name;
+  if ($("#model")) $("#model").value = activeVal;
+  if ($("#currentModelName")) $("#currentModelName").textContent = activeVal;
+
+  modelMenu.innerHTML = `<div class="model-menu-head">Active Orchestrator Model</div>` +
+    activeModels.map((m) => {
+      const isAct = m.name === activeVal;
+      const icon = m.provider === "Anthropic" ? "ti-sparkles" : m.provider === "OpenAI" ? "ti-cpu" : m.provider === "DeepSeek" ? "ti-brain" : "ti-code";
+      const iconColor = m.provider === "Anthropic" ? "var(--violet)" : m.provider === "OpenAI" ? "var(--blue)" : m.provider === "DeepSeek" ? "var(--green)" : "#d97706";
+      return `<button type="button" class="model-opt ${isAct ? "active" : ""}" data-model="${esc(m.name)}" role="option" aria-selected="${isAct}">
+        <div class="model-opt-info">
+          <span class="model-opt-name"><i class="ti ${icon}" style="color:${iconColor}"></i>${esc(m.name)}</span>
+          <span class="model-opt-desc">${esc(m.desc || m.provider)}</span>
+        </div>
+        <span class="model-tag">${esc(m.tag || "Ready")}</span>
+      </button>`;
+    }).join("");
+  wireModelOptClicks();
+}
+
+if (modelTrigger && modelMenu) {
+  modelTrigger.onclick = (e) => {
+    e.stopPropagation();
+    const isOpen = modelMenu.style.display !== "none";
+    modelMenu.style.display = isOpen ? "none" : "flex";
+    modelPicker.classList.toggle("open", !isOpen);
+    modelTrigger.setAttribute("aria-expanded", String(!isOpen));
+  };
+  wireModelOptClicks();
   document.addEventListener("click", (e) => {
     if (modelPicker && !modelPicker.contains(e.target)) {
       modelMenu.style.display = "none";
@@ -278,7 +309,10 @@ function showPage(page) {
   $("#viewWorkspace").style.display = isSet ? "none" : "flex";
   $("#viewSettings").style.display = isSet ? "flex" : "none";
   $(".app").classList.toggle("settings-mode", isSet);
-  if (isSet) openSettings();
+  if (isSet) {
+    if (CFG) renderSubpage(curSubpage);
+    openSettings();
+  }
 }
 
 $("#navWorkspace").onclick = () => showPage("workspace");
@@ -301,6 +335,7 @@ function renderSubpage(sub) {
   if (pane) pane.style.display = "block";
   if (sub === "supervisor") renderSupervisorPane();
   else if (sub === "agents") renderAgentsPane();
+  else if (sub === "models") renderModelsPane();
   else if (sub === "marketplace") renderMarketplacePane();
   else if (sub === "mcps") renderMcpsPane();
   else if (sub === "guardrails") renderGuardrailsPane();
@@ -330,9 +365,49 @@ function normalizeCfg(c) {
   if (!Array.isArray(c.supervisor.tools)) c.supervisor.tools = [];
   if (!Array.isArray(c.supervisor.mcps)) c.supervisor.mcps = [];
   if (!Array.isArray(c.mcps)) c.mcps = [];
+  if (Array.isArray(c.profiles)) {
+    c.profiles.forEach((p) => {
+      if (!Array.isArray(p.skills) || !p.skills.length) {
+        p.skills = p.domain === "software" || p.domain === "code"
+          ? ["architecture-review", "code-review", "task-decomposition", "fix-ci", "ponytail", "generate-run-commands"]
+          : p.domain === "security"
+          ? ["threat-modeling", "security-audit", "adversarial-review", "guardrail-enforcement", "compliance-check"]
+          : p.domain === "research"
+          ? ["hypothesis-formulation", "source-verification", "fact-checking", "literature-review", "information-synthesis"]
+          : ["intent-parsing", "task-decomposition", "synthesis", "conflict-resolution", "policy-enforcement"];
+      }
+      if (!Array.isArray(p.tools) || !p.tools.length) {
+        p.tools = p.domain === "software" || p.domain === "code"
+          ? ["delegate_task", "inspect_context", "review_diff", "agent_spawn", "python_repl"]
+          : p.domain === "security"
+          ? ["delegate_task", "request_approval", "inspect_context", "cancel_run"]
+          : ["delegate_task", "request_approval", "inspect_context", "agent_spawn"];
+      }
+      if (!Array.isArray(p.mcps)) p.mcps = ["local"];
+    });
+  }
+  if (!Array.isArray(c.models) || !c.models.length) {
+    c.models = [
+      { id: "claude-3-7-sonnet", name: "Claude 3.7 Sonnet", provider: "Anthropic", tag: "Recommended", desc: "Hybrid reasoning & deep code execution", context: "200k", on: true, default: true },
+      { id: "gpt-4o", name: "GPT-4o", provider: "OpenAI", tag: "Flagship", desc: "High-bandwidth multimodal intelligence", context: "128k", on: true, default: false },
+      { id: "deepseek-r1", name: "DeepSeek R1", provider: "DeepSeek", tag: "Reasoning", desc: "In-depth mathematical reasoning", context: "64k", on: true, default: false },
+      { id: "qwen-2-5-coder", name: "Qwen 2.5 Coder", provider: "Alibaba Cloud / Ollama", tag: "Fast", desc: "Fast open-source code generation", context: "32k", on: true, default: false },
+    ];
+  }
+  if (!c.providers) c.providers = { anthropic: "", openai: "", deepseek: "", ollamaUrl: "http://localhost:11434" };
   if (Array.isArray(c.skills)) {
     c.skills.forEach((s) => {
-      if (!Array.isArray(s.skills)) s.skills = [s.cap || "general"];
+      if (!Array.isArray(s.skills) || !s.skills.length) {
+        s.skills = s.cap === "research"
+          ? ["web-search", "content-extraction", "summarization", "source-verification"]
+          : s.cap === "code"
+          ? ["javascript", "python", "refactoring", "fix-ci", "ponytail"]
+          : s.cap === "exec"
+          ? ["shell-exec", "file-io", "docker", "troubleshoot"]
+          : s.cap === "review"
+          ? ["security-audit", "diff-review", "validation", "code-review"]
+          : ["frontend-design", "web-design-engineer", "ui-ux-pro-max"];
+      }
       if (!Array.isArray(s.tools)) s.tools = ["exec"];
       if (!Array.isArray(s.mcps)) s.mcps = ["local"];
     });
@@ -350,6 +425,7 @@ async function pushCfg(mutator) {
     normalizeCfg(CFG);
     if (tag) tag.innerHTML = '<i class="ti ti-check"></i> Saved';
     syncAssignmentTable();
+    syncComposerModels();
   } catch (err) {
     if (tag) tag.innerHTML = '<i class="ti ti-alert-circle" style="color:#ef4444"></i> Save Failed';
     console.error("pushCfg error:", err);
@@ -373,41 +449,66 @@ function syncAssignmentTable() {
 /* ---------- 1. Supervisor Sub-page ---------- */
 function renderSupervisorPane() {
   if (!CFG) return;
-  const sup = CFG.supervisor;
+  const prof = CFG.profiles.find((p) => p.id === CFG.active) || CFG.profiles[0] || {};
+  const supSkills = Array.isArray(prof.skills) ? prof.skills : (CFG.supervisor.skills || []);
+  const supTools = Array.isArray(prof.tools) ? prof.tools : (CFG.supervisor.tools || []);
+  const supMcps = Array.isArray(prof.mcps) ? prof.mcps : (CFG.supervisor.mcps || []);
 
   // Profile select
   const sel = $("#supProfileSelect");
   sel.innerHTML = CFG.profiles.map((p) => `<option value="${p.id}" ${p.id === CFG.active ? "selected" : ""}>${esc(p.name)} (${esc(p.domain)})</option>`).join("");
-  sel.onchange = (e) => pushCfg((c) => { c.active = e.target.value; });
+  sel.onchange = (e) => {
+    pushCfg((c) => { c.active = e.target.value; });
+    renderSupervisorPane();
+  };
 
   // Profile list
   const pList = $("#supProfileList");
   pList.innerHTML = CFG.profiles.map((p) => `
     <div class="set-row" style="font-size:11px;padding:6px 0">
-      <span><strong>${esc(p.name)}</strong> <small style="color:var(--muted)">· domain: ${esc(p.domain)}</small></span>
+      <span>
+        <strong>${esc(p.name)}</strong>
+        <small style="color:var(--muted)">· domain: ${esc(p.domain)} · ${(p.skills || []).length} skills · ${(p.tools || []).length} tools</small>
+        ${p.id === CFG.active ? '<span class="active-tag" style="margin-left:6px;font-size:8.5px;padding:1px 6px">Active</span>' : ''}
+      </span>
       <span>${CFG.profiles.length > 1 ? `<button class="ghost" data-delprof="${p.id}" style="padding:2px 8px;font-size:10px">del</button>` : `<small style="color:var(--muted)">default</small>`}</span>
     </div>`).join("");
 
   // Skills
   const sList = $("#supSkillsList");
-  sList.innerHTML = sup.skills.map((sk) => `
+  sList.innerHTML = supSkills.map((sk) => `
     <span class="badge-item blue">
       <span>${esc(sk)}</span>
       <button class="badge-del" data-delsupskill="${esc(sk)}" title="Remove skill"><i class="ti ti-x"></i></button>
-    </span>`).join("") || `<span style="color:var(--muted);font-size:10px">No supervisor skills assigned.</span>`;
+    </span>`).join("") || `<span style="color:var(--muted);font-size:10px">No supervisor skills assigned to ${esc(prof.name)}.</span>`;
+
+  // Dynamic domain-specific supervisor suggestions
+  const supSuggestions = prof.domain === "software" || prof.domain === "code"
+    ? ["architecture-review", "code-review", "task-decomposition", "fix-ci", "ponytail", "generate-run-commands", "refactoring-planning"]
+    : prof.domain === "security"
+    ? ["threat-modeling", "security-audit", "adversarial-review", "guardrail-enforcement", "compliance-check"]
+    : prof.domain === "research"
+    ? ["hypothesis-formulation", "source-verification", "fact-checking", "literature-review", "information-synthesis"]
+    : ["intent-parsing", "task-decomposition", "synthesis", "conflict-resolution", "policy-enforcement", "act-on-feedback"];
+
+  const chipsContainer = $("#pane-supervisor .suggest-chips");
+  if (chipsContainer) {
+    chipsContainer.innerHTML = `<span>Suggestions for ${esc(prof.name)} (${esc(prof.domain)}):</span>` +
+      supSuggestions.filter((sk) => !supSkills.includes(sk)).map((sk) => `<button class="suggest-chip" data-supskill="${esc(sk)}">+ ${esc(sk)}</button>`).join("");
+  }
 
   // Tools
   const tList = $("#supToolsList");
-  tList.innerHTML = sup.tools.map((tl) => `
+  tList.innerHTML = supTools.map((tl) => `
     <span class="badge-item violet">
       <span>${esc(tl)}</span>
       <button class="badge-del" data-delsuptool="${esc(tl)}" title="Remove tool"><i class="ti ti-x"></i></button>
-    </span>`).join("") || `<span style="color:var(--muted);font-size:10px">No supervisor tools assigned.</span>`;
+    </span>`).join("") || `<span style="color:var(--muted);font-size:10px">No supervisor tools assigned to ${esc(prof.name)}.</span>`;
 
   // Attached MCPs Grid
   const mGrid = $("#supMcpsGrid");
   mGrid.innerHTML = CFG.mcps.map((m) => {
-    const isChecked = sup.mcps.includes(m.id);
+    const isChecked = supMcps.includes(m.id);
     return `
       <div class="mcp-check-card ${isChecked ? "checked" : ""}" data-togglesupmcp="${m.id}">
         <div class="mcp-check-head">
@@ -425,8 +526,18 @@ $("#addProfBtn").onclick = () => {
   const d = $("#addProfDomain").value.trim() || "general";
   if (!n) return;
   const id = n.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const initialSkills = d === "software" || d === "code"
+    ? ["architecture-review", "code-review", "task-decomposition", "fix-ci", "ponytail", "generate-run-commands"]
+    : d === "security"
+    ? ["threat-modeling", "security-audit", "adversarial-review", "guardrail-enforcement", "compliance-check"]
+    : d === "research"
+    ? ["hypothesis-formulation", "source-verification", "fact-checking", "literature-review", "information-synthesis"]
+    : ["intent-parsing", "task-decomposition", "synthesis", "conflict-resolution", "policy-enforcement"];
+  const initialTools = d === "software" || d === "code"
+    ? ["delegate_task", "inspect_context", "review_diff", "agent_spawn", "python_repl"]
+    : ["delegate_task", "request_approval", "inspect_context", "agent_spawn"];
   pushCfg((c) => {
-    c.profiles.push({ id, name: n, domain: d });
+    c.profiles.push({ id, name: n, domain: d, skills: initialSkills, tools: initialTools, mcps: ["local"] });
     c.active = id;
   });
   $("#addProfName").value = "";
@@ -438,10 +549,15 @@ $("#addProfBtn").onclick = () => {
 function addSupSkill(skill) {
   const sk = String(skill || "").trim().toLowerCase();
   if (!sk) return;
-  if (!CFG.supervisor.skills.includes(sk)) {
-    pushCfg((c) => c.supervisor.skills.push(sk));
-    renderSupervisorPane();
-  }
+  pushCfg((c) => {
+    const prof = c.profiles.find((p) => p.id === c.active) || c.profiles[0];
+    if (prof) {
+      if (!Array.isArray(prof.skills)) prof.skills = [];
+      if (!prof.skills.includes(sk)) prof.skills.push(sk);
+    }
+    if (!c.supervisor.skills.includes(sk)) c.supervisor.skills.push(sk);
+  });
+  renderSupervisorPane();
 }
 $("#addSupSkillBtn").onclick = () => {
   addSupSkill($("#addSupSkillInput").value);
@@ -459,10 +575,15 @@ $("#addSupSkillInput").onkeydown = (e) => {
 function addSupTool(tool) {
   const tl = String(tool || "").trim();
   if (!tl) return;
-  if (!CFG.supervisor.tools.includes(tl)) {
-    pushCfg((c) => c.supervisor.tools.push(tl));
-    renderSupervisorPane();
-  }
+  pushCfg((c) => {
+    const prof = c.profiles.find((p) => p.id === c.active) || c.profiles[0];
+    if (prof) {
+      if (!Array.isArray(prof.tools)) prof.tools = [];
+      if (!prof.tools.includes(tl)) prof.tools.push(tl);
+    }
+    if (!c.supervisor.tools.includes(tl)) c.supervisor.tools.push(tl);
+  });
+  renderSupervisorPane();
 }
 $("#addSupToolBtn").onclick = () => {
   addSupTool($("#addSupToolInput").value);
@@ -477,6 +598,14 @@ $("#addSupToolInput").onkeydown = (e) => {
 };
 
 /* ---------- 2. Worker Agents Sub-page ---------- */
+const AGENT_SUGGESTIONS = {
+  research: ["web-search", "content-extraction", "summarization", "source-verification", "fact-checking"],
+  code: ["javascript", "python", "refactoring", "fix-ci", "ponytail", "generate-run-commands", "syntax-check"],
+  exec: ["shell-exec", "file-io", "docker", "troubleshoot", "process-management", "environment-setup"],
+  review: ["security-audit", "diff-review", "validation", "code-review", "adversarial-testing", "lint"],
+  custom: ["frontend-design", "web-design-engineer", "ui-ux-pro-max", "shadcn", "canvas-design", "animate"],
+};
+
 function renderAgentsPane() {
   if (!CFG) return;
   const container = $("#agentsListContainer");
@@ -500,6 +629,12 @@ function renderAgentsPane() {
       </button>`;
     }).join("");
 
+    const suggList = AGENT_SUGGESTIONS[agent.cap] || AGENT_SUGGESTIONS.custom;
+    const availableSuggs = suggList.filter((s) => !(agent.skills || []).includes(s));
+    const suggChips = availableSuggs.map((s) => `
+      <button class="suggest-chip" data-addagentskill="${agent.id}:${esc(s)}">+ ${esc(s)}</button>
+    `).join("");
+
     return `
       <div class="agent-config-card">
         <div class="agent-card-head">
@@ -518,16 +653,17 @@ function renderAgentsPane() {
         </div>
 
         <div>
-          <div class="agent-subhead">Agent Skills</div>
+          <div class="agent-subhead">Agent Skills (${(agent.skills || []).length})</div>
           <div class="badge-wrap">${skillsHtml}</div>
           <div class="add-inline">
             <input class="in-agent-skill" data-agentid="${agent.id}" placeholder="Add skill to ${esc(agent.name)}..." />
             <button class="btn-add-agent-skill" data-agentid="${agent.id}">Add</button>
           </div>
+          ${suggChips ? `<div class="suggest-chips" style="margin-top:6px"><span>Suggested for ${esc(agent.cap)}:</span>${suggChips}</div>` : ""}
         </div>
 
         <div style="margin-top:10px">
-          <div class="agent-subhead">Agent Tools</div>
+          <div class="agent-subhead">Agent Tools (${(agent.tools || []).length})</div>
           <div class="badge-wrap">${toolsHtml}</div>
           <div class="add-inline">
             <input class="in-agent-tool" data-agentid="${agent.id}" placeholder="Add tool to ${esc(agent.name)}..." />
@@ -887,8 +1023,30 @@ function installCustomPackage(source, type) {
   renderMarketplacePane();
 }
 
+let LOCAL_SKILLS_LIBRARY = [];
+let localSkillsLoading = false;
+
+async function loadSkillsLibrary() {
+  if (localSkillsLoading) return;
+  localSkillsLoading = true;
+  try {
+    const res = await api("GET", "/api/skills/library");
+    if (res && Array.isArray(res.skills)) {
+      LOCAL_SKILLS_LIBRARY = res.skills;
+    }
+  } catch (err) {
+    console.error("Failed to load skills library:", err);
+  } finally {
+    localSkillsLoading = false;
+  }
+}
+
 function renderMarketplacePane() {
   if (!CFG) return;
+  if (!LOCAL_SKILLS_LIBRARY.length && !localSkillsLoading) {
+    loadSkillsLibrary().then(() => renderMarketplacePane());
+  }
+
   const q = marketQuery.trim().toLowerCase();
 
   // Search input & filter event listeners (idempotent)
@@ -915,10 +1073,16 @@ function renderMarketplacePane() {
 
   const isInstalled = (item) => {
     if (item.type === "skill") {
-      return CFG.supervisor.skills.includes(item.id) || CFG.skills.some((a) => (a.skills || []).includes(item.id));
+      const inSup = (CFG.profiles || []).some((p) => (p.skills || []).includes(item.id)) ||
+                    (CFG.supervisor && (CFG.supervisor.skills || []).includes(item.id));
+      const inAgent = (CFG.skills || []).some((a) => (a.skills || []).includes(item.id));
+      return inSup || inAgent;
     }
     if (item.type === "tool") {
-      return CFG.supervisor.tools.includes(item.id) || CFG.skills.some((a) => (a.tools || []).includes(item.id));
+      const inSup = (CFG.profiles || []).some((p) => (p.tools || []).includes(item.id)) ||
+                    (CFG.supervisor && (CFG.supervisor.tools || []).includes(item.id));
+      const inAgent = (CFG.skills || []).some((a) => (a.tools || []).includes(item.id));
+      return inSup || inAgent;
     }
     if (item.type === "mcp") {
       return CFG.mcps.some((m) => m.id === item.id);
@@ -930,21 +1094,45 @@ function renderMarketplacePane() {
     return false;
   };
 
-  const filtered = MARKETPLACE_CATALOG.filter((item) => {
+  // Convert local library skills into market items
+  const localItems = LOCAL_SKILLS_LIBRARY.map((s) => ({
+    id: s.id,
+    name: s.name,
+    type: "skill",
+    isLocal: true,
+    category: s.category,
+    source: `.agents/skills/${s.id}`,
+    icon: s.icon || "ti-tool",
+    color: s.color || "var(--blue)",
+    desc: s.description,
+    tags: ["skill", "local", s.category.toLowerCase().replace(/[^a-z0-9]+/g, "-")],
+    badge: "Local Skill",
+  }));
+
+  // Combine local library items with global tools/MCPs, prioritizing local skills
+  const allItems = [...localItems, ...MARKETPLACE_CATALOG];
+
+  const filtered = allItems.filter((item) => {
     if (marketFilter === "installed" && !isInstalled(item)) return false;
-    if (marketFilter !== "all" && marketFilter !== "installed" && item.type !== marketFilter) return false;
+    if (marketFilter === "local" && !item.isLocal) return false;
+    if (marketFilter === "design" && !(item.category && item.category.includes("Design"))) return false;
+    if (marketFilter === "engineering" && !(item.category && item.category.includes("Engineering"))) return false;
+    if (marketFilter === "git" && !(item.category && item.category.includes("Git"))) return false;
+    if (marketFilter === "tool" && item.type !== "tool") return false;
+    if (marketFilter === "mcp" && item.type !== "mcp") return false;
     if (q) {
-      const matchName = item.name.toLowerCase().includes(q);
-      const matchId = item.id.toLowerCase().includes(q);
-      const matchDesc = item.desc.toLowerCase().includes(q);
+      const matchName = (item.name || "").toLowerCase().includes(q);
+      const matchId = (item.id || "").toLowerCase().includes(q);
+      const matchDesc = (item.desc || "").toLowerCase().includes(q);
+      const matchCategory = (item.category || "").toLowerCase().includes(q);
       const matchTags = (item.tags || []).some((t) => t.toLowerCase().includes(q));
-      if (!matchName && !matchId && !matchDesc && !matchTags) return false;
+      if (!matchName && !matchId && !matchDesc && !matchCategory && !matchTags) return false;
     }
     return true;
   });
 
   const badge = $("#marketCountBadge");
-  if (badge) badge.textContent = `${filtered.length} of ${MARKETPLACE_CATALOG.length} items`;
+  if (badge) badge.textContent = `${filtered.length} of ${allItems.length} items`;
 
   const container = $("#marketGridContainer");
   if (!container) return;
@@ -961,35 +1149,73 @@ function renderMarketplacePane() {
 
   container.innerHTML = filtered.map((item) => {
     const installed = isInstalled(item);
+
+    // Compute active assignments
+    const assignments = [];
+    (CFG.profiles || []).forEach((p) => {
+      if (item.type === "skill" && (p.skills || []).includes(item.id)) {
+        assignments.push({ type: "supervisor", id: p.id, label: `${p.name} (Supervisor)` });
+      } else if (item.type === "tool" && (p.tools || []).includes(item.id)) {
+        assignments.push({ type: "supervisor", id: p.id, label: `${p.name} (Supervisor)` });
+      }
+    });
+    (CFG.skills || []).forEach((a) => {
+      if (item.type === "skill" && (a.skills || []).includes(item.id)) {
+        assignments.push({ type: "agent", id: a.id, label: `${a.name} (Agent)` });
+      } else if (item.type === "tool" && (a.tools || []).includes(item.id)) {
+        assignments.push({ type: "agent", id: a.id, label: `${a.name} (Agent)` });
+      }
+    });
+
+    const assignmentsHtml = assignments.length ? `
+      <div style="margin-top:8px;padding-top:6px;border-top:1px dashed var(--border)">
+        <div style="font-size:9.5px;color:var(--muted);font-weight:600;margin-bottom:4px">Assigned To:</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px">
+          ${assignments.map((r) => `
+            <span class="badge-item blue" style="font-size:9.5px;padding:1px 6px">
+              <span>${esc(r.label)}</span>
+              <button class="badge-del" data-unassignskill="${esc(item.id)}:${esc(r.type)}:${esc(r.id)}" title="Unassign from ${esc(r.label)}">
+                <i class="ti ti-x"></i>
+              </button>
+            </span>
+          `).join("")}
+        </div>
+      </div>
+    ` : "";
+
     let actionHtml = "";
 
     if (item.type === "skill") {
-      const inSup = CFG.supervisor.skills.includes(item.id);
       actionHtml = `
-        <div class="market-btn-group">
-          <button class="market-action-btn ${inSup ? "installed" : "primary"}" data-addmarketskill-sup="${item.id}" ${inSup ? "disabled" : ""}>
-            <i class="ti ${inSup ? "ti-check" : "ti-crown"}"></i> ${inSup ? "In Supervisor" : "+ Supervisor"}
-          </button>
-          <select class="market-agent-select" data-marketskill="${item.id}" style="font-size:10px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)">
-            <option value="">+ Assign Agent...</option>
-            ${CFG.skills.map((a) => {
-              const has = (a.skills || []).includes(item.id);
-              return `<option value="${a.id}">${has ? "âœ“ " : "+ "}${esc(a.name)}</option>`;
-            }).join("")}
+        <div class="market-btn-group" style="display:flex;align-items:center;gap:6px">
+          <select class="market-assign-select" data-assignskill="${esc(item.id)}" style="font-size:10px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-weight:600">
+            <option value="">+ Assign to Role...</option>
+            <optgroup label="Supervisor Profiles">
+              ${(CFG.profiles || []).map((p) => {
+                const has = (p.skills || []).includes(item.id);
+                return `<option value="supervisor:${p.id}">${has ? "[Installed] " : "+ "}Supervisor: ${esc(p.name)}</option>`;
+              }).join("")}
+            </optgroup>
+            <optgroup label="Worker Agents">
+              ${(CFG.skills || []).map((a) => {
+                const has = (a.skills || []).includes(item.id);
+                return `<option value="agent:${a.id}">${has ? "[Installed] " : "+ "}Agent: ${esc(a.name)}</option>`;
+              }).join("")}
+            </optgroup>
           </select>
         </div>`;
     } else if (item.type === "tool") {
-      const inSup = CFG.supervisor.tools.includes(item.id);
+      const inSup = (CFG.supervisor.tools || []).includes(item.id);
       actionHtml = `
-        <div class="market-btn-group">
+        <div class="market-btn-group" style="display:flex;align-items:center;gap:6px">
           <button class="market-action-btn ${inSup ? "installed" : "primary"}" data-addmarkettool-sup="${item.id}" ${inSup ? "disabled" : ""}>
             <i class="ti ${inSup ? "ti-check" : "ti-crown"}"></i> ${inSup ? "In Supervisor" : "+ Supervisor"}
           </button>
           <select class="market-agent-tool-select" data-markettool="${item.id}" style="font-size:10px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)">
             <option value="">+ Assign Agent...</option>
-            ${CFG.skills.map((a) => {
+            ${(CFG.skills || []).map((a) => {
               const has = (a.tools || []).includes(item.id);
-              return `<option value="${a.id}">${has ? "âœ“ " : "+ "}${esc(a.name)}</option>`;
+              return `<option value="${a.id}">${has ? "[Installed] " : "+ "}${esc(a.name)}</option>`;
             }).join("")}
           </select>
         </div>`;
@@ -1018,13 +1244,14 @@ function renderMarketplacePane() {
         <div>
           <div class="market-card-head">
             <div class="market-card-title">
-              <i class="ti ${item.icon || "ti-box"}" style="color:var(--blue);font-size:16px"></i>
+              <i class="ti ${item.icon || "ti-box"}" style="color:${item.color || "var(--blue)"};font-size:16px"></i>
               <span>${esc(item.name)}</span>
             </div>
-            <span class="market-badge ${item.type}">${item.badge || item.type}</span>
+            <span class="market-badge ${item.isLocal ? "skill" : item.type}">${esc(item.badge || item.category || item.type)}</span>
           </div>
           <div class="market-card-source">${esc(item.source)}</div>
           <div class="market-card-desc" style="margin-top:8px">${esc(item.desc)}</div>
+          ${assignmentsHtml}
         </div>
 
         <div>
@@ -1040,6 +1267,126 @@ function renderMarketplacePane() {
         </div>
       </div>`;
   }).join("");
+}
+
+/* ---------- Models Sub-page ---------- */
+function renderModelsPane() {
+  if (!CFG) return;
+  const models = CFG.models || [];
+  const activeCount = models.filter((m) => m.on).length;
+
+  const countBadge = $("#modelsCountBadge");
+  if (countBadge) countBadge.textContent = `${activeCount} Active / ${models.length} Total`;
+
+  // Default model select dropdown
+  const defSel = $("#defaultModelSelect");
+  if (defSel) {
+    defSel.innerHTML = models.filter((m) => m.on).map((m) =>
+      `<option value="${esc(m.name)}" ${m.default ? "selected" : ""}>${esc(m.name)} (${esc(m.provider)})</option>`
+    ).join("") || `<option value="">No active models</option>`;
+  }
+
+  // Registry list
+  const list = $("#modelsRegistryList");
+  if (list) {
+    list.innerHTML = models.map((m) => {
+      const icon = m.provider === "Anthropic" ? "ti-sparkles" : m.provider === "OpenAI" ? "ti-cpu" : m.provider === "DeepSeek" ? "ti-brain" : "ti-code";
+      const iconColor = m.provider === "Anthropic" ? "var(--violet)" : m.provider === "OpenAI" ? "var(--blue)" : m.provider === "DeepSeek" ? "var(--green)" : "#d97706";
+      const tagBg = m.tag === "Recommended" ? "var(--blue-soft)" : m.tag === "Flagship" ? "var(--green-soft)" : m.tag === "Reasoning" ? "var(--violet-soft)" : "#fef3c7";
+      const tagColor = m.tag === "Recommended" ? "var(--blue)" : m.tag === "Flagship" ? "var(--green)" : m.tag === "Reasoning" ? "var(--violet)" : "#92400e";
+
+      return `
+        <div class="set-row" style="padding:12px 0;border-bottom:1px solid var(--border);align-items:flex-start">
+          <div style="display:flex;align-items:flex-start;gap:12px">
+            <input type="checkbox" data-modelon="${esc(m.id)}" ${m.on ? "checked" : ""} style="margin-top:3px;cursor:pointer" title="Enable/Disable model"/>
+            <div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <i class="ti ${icon}" style="font-size:14px;color:${iconColor}"></i>
+                <strong style="font-size:12.5px">${esc(m.name)}</strong>
+                <span class="badge" style="background:${tagBg};color:${tagColor};font-size:8.5px;padding:2px 6px;border-radius:4px">${esc(m.tag || "Model")}</span>
+                ${m.default ? '<span class="active-tag" style="font-size:8.5px;padding:2px 6px">Default Orchestrator</span>' : ''}
+              </div>
+              <div style="font-size:10.5px;color:var(--muted);margin-top:3px">${esc(m.desc || m.provider)} · Context: <strong>${esc(m.context || "128k")}</strong> · Provider: ${esc(m.provider)}</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center">
+            ${!m.default && m.on ? `<button class="ghost" data-setdefault="${esc(m.id)}" style="padding:4px 8px;font-size:10px"><i class="ti ti-check"></i> Set Default</button>` : ''}
+            ${!m.default ? `<button class="ghost" data-delmodel="${esc(m.id)}" style="padding:4px 8px;font-size:10px;color:#ef4444"><i class="ti ti-trash"></i> Remove</button>` : ''}
+          </div>
+        </div>`;
+    }).join("") || `<div style="color:var(--muted);font-size:11px">No models registered yet.</div>`;
+  }
+
+  // Provider credentials
+  const prov = CFG.providers || {};
+  if ($("#cfg-key-anthropic")) $("#cfg-key-anthropic").value = prov.anthropic || "";
+  if ($("#cfg-key-openai")) $("#cfg-key-openai").value = prov.openai || "";
+  if ($("#cfg-key-deepseek")) $("#cfg-key-deepseek").value = prov.deepseek || "";
+  if ($("#cfg-url-ollama")) $("#cfg-url-ollama").value = prov.ollamaUrl || "http://localhost:11434";
+}
+
+if ($("#defaultModelSelect")) {
+  $("#defaultModelSelect").onchange = (e) => {
+    const val = e.target.value;
+    pushCfg((c) => {
+      (c.models || []).forEach((m) => { m.default = (m.name === val); });
+    });
+    if ($("#model")) $("#model").value = val;
+    if ($("#currentModelName")) $("#currentModelName").textContent = val;
+    renderModelsPane();
+    syncComposerModels();
+  };
+}
+
+if ($("#newModelBtn")) {
+  $("#newModelBtn").onclick = () => {
+    const name = ($("#newModelName").value || "").trim();
+    if (!name) return;
+    const provider = ($("#newModelProvider").value || "Custom").trim();
+    const desc = ($("#newModelDesc").value || `${provider} inference model`).trim();
+    const tag = $("#newModelTag") ? $("#newModelTag").value : "General";
+    const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+
+    pushCfg((c) => {
+      if (!c.models) c.models = [];
+      const exists = c.models.find((m) => m.id === id);
+      if (exists) {
+        exists.name = name;
+        exists.provider = provider;
+        exists.desc = desc;
+        exists.tag = tag;
+        exists.on = true;
+      } else {
+        c.models.push({ id, name, provider, desc, tag, context: "128k", on: true, default: false });
+      }
+    });
+
+    $("#newModelName").value = "";
+    $("#newModelProvider").value = "";
+    $("#newModelDesc").value = "";
+    renderModelsPane();
+    syncComposerModels();
+  };
+}
+
+["anthropic", "openai", "deepseek"].forEach((p) => {
+  const el = $(`#cfg-key-${p}`);
+  if (el) {
+    el.onchange = (e) => {
+      pushCfg((c) => {
+        if (!c.providers) c.providers = {};
+        c.providers[p] = e.target.value.trim();
+      });
+    };
+  }
+});
+if ($("#cfg-url-ollama")) {
+  $("#cfg-url-ollama").onchange = (e) => {
+    pushCfg((c) => {
+      if (!c.providers) c.providers = {};
+      c.providers.ollamaUrl = e.target.value.trim();
+    });
+  };
 }
 
 /* ---------- 3. MCPs & Tools Sub-page ---------- */
@@ -1107,16 +1454,51 @@ $("#viewSettings").addEventListener("click", (e) => {
     });
     renderSupervisorPane();
   }
+  // Model delete
+  else if (t.matches("[data-delmodel]")) {
+    const id = t.dataset.delmodel;
+    pushCfg((c) => {
+      c.models = (c.models || []).filter((m) => m.id !== id);
+    });
+    renderModelsPane();
+    syncComposerModels();
+  }
+  // Model set default
+  else if (t.matches("[data-setdefault]")) {
+    const id = t.dataset.setdefault;
+    pushCfg((c) => {
+      (c.models || []).forEach((m) => { m.default = (m.id === id); });
+    });
+    const defM = (CFG.models || []).find((m) => m.id === id);
+    if (defM) {
+      if ($("#model")) $("#model").value = defM.name;
+      if ($("#currentModelName")) $("#currentModelName").textContent = defM.name;
+    }
+    renderModelsPane();
+    syncComposerModels();
+  }
   // Supervisor skill delete
   else if (t.matches("[data-delsupskill]")) {
     const sk = t.dataset.delsupskill;
-    pushCfg((c) => { c.supervisor.skills = c.supervisor.skills.filter((s) => s !== sk); });
+    pushCfg((c) => {
+      const prof = c.profiles.find((p) => p.id === c.active);
+      if (prof && Array.isArray(prof.skills)) {
+        prof.skills = prof.skills.filter((s) => s !== sk);
+      }
+      c.supervisor.skills = (c.supervisor.skills || []).filter((s) => s !== sk);
+    });
     renderSupervisorPane();
   }
   // Supervisor tool delete
   else if (t.matches("[data-delsuptool]")) {
     const tl = t.dataset.delsuptool;
-    pushCfg((c) => { c.supervisor.tools = c.supervisor.tools.filter((x) => x !== tl); });
+    pushCfg((c) => {
+      const prof = c.profiles.find((p) => p.id === c.active);
+      if (prof && Array.isArray(prof.tools)) {
+        prof.tools = prof.tools.filter((x) => x !== tl);
+      }
+      c.supervisor.tools = (c.supervisor.tools || []).filter((x) => x !== tl);
+    });
     renderSupervisorPane();
   }
   // Supervisor skill suggestion chip
@@ -1132,11 +1514,31 @@ $("#viewSettings").addEventListener("click", (e) => {
     const card = t.closest("[data-togglesupmcp]");
     const mcpId = card.dataset.togglesupmcp;
     pushCfg((c) => {
+      const prof = c.profiles.find((p) => p.id === c.active);
+      if (prof) {
+        if (!Array.isArray(prof.mcps)) prof.mcps = [];
+        const pIdx = prof.mcps.indexOf(mcpId);
+        if (pIdx >= 0) prof.mcps.splice(pIdx, 1);
+        else prof.mcps.push(mcpId);
+      }
       const idx = c.supervisor.mcps.indexOf(mcpId);
       if (idx >= 0) c.supervisor.mcps.splice(idx, 1);
       else c.supervisor.mcps.push(mcpId);
     });
     renderSupervisorPane();
+  }
+  // Agent add skill via suggestion chip
+  else if (t.matches("[data-addagentskill]")) {
+    const [agentId, skill] = t.dataset.addagentskill.split(":");
+    if (!agentId || !skill) return;
+    pushCfg((c) => {
+      const a = c.skills.find((x) => x.id === agentId);
+      if (a) {
+        if (!Array.isArray(a.skills)) a.skills = [];
+        if (!a.skills.includes(skill)) a.skills.push(skill);
+      }
+    });
+    renderAgentsPane();
   }
   // Agent delete
   else if (t.matches("[data-delagent]")) {
@@ -1288,6 +1690,24 @@ $("#viewSettings").addEventListener("click", (e) => {
       renderMarketplacePane();
     }
   }
+  // Marketplace unassign skill from role
+  else if (t.matches("[data-unassignskill]") || t.closest("[data-unassignskill]")) {
+    const btn = t.matches("[data-unassignskill]") ? t : t.closest("[data-unassignskill]");
+    const parts = (btn.dataset.unassignskill || "").split(":");
+    if (parts.length >= 3) {
+      const [skillId, targetType, targetId] = parts;
+      api("POST", "/api/skills/unassign", { skillId, targetType, targetId }).then((res) => {
+        if (res && res.config) {
+          CFG = res.config;
+          normalizeCfg(CFG);
+        }
+        showMarketToast(`Removed skill "${skillId}" from ${targetType === "supervisor" ? "Supervisor" : "Agent"}.`);
+        renderMarketplacePane();
+        renderSupervisorPane();
+        renderAgentsPane();
+      }).catch(console.error);
+    }
+  }
 });
 
 $("#viewSettings").addEventListener("change", (e) => {
@@ -1308,6 +1728,23 @@ $("#viewSettings").addEventListener("change", (e) => {
       if (a) a.on = t.checked;
     });
   }
+  // Model on/off in registry
+  else if (t.matches("[data-modelon]")) {
+    const id = t.dataset.modelon;
+    pushCfg((c) => {
+      const m = (c.models || []).find((x) => x.id === id);
+      if (m) {
+        m.on = t.checked;
+        if (!m.on && m.default) {
+          const firstOn = (c.models || []).find((x) => x.on && x.id !== id);
+          if (firstOn) firstOn.default = true;
+          m.default = false;
+        }
+      }
+    });
+    renderModelsPane();
+    syncComposerModels();
+  }
   // MCP on/off in registry
   else if (t.matches("[data-mcpon]")) {
     const id = t.dataset.mcpon;
@@ -1315,6 +1752,28 @@ $("#viewSettings").addEventListener("change", (e) => {
       const m = c.mcps.find((x) => x.id === id);
       if (m) m.on = t.checked;
     });
+  }
+  // Marketplace assign skill to role (supervisor or agent)
+  else if (t.matches(".market-assign-select")) {
+    const skillId = t.dataset.assignskill;
+    const val = t.value;
+    if (!val || !skillId) return;
+    const [targetType, targetId] = val.split(":");
+    if (!targetType || !targetId) return;
+    api("POST", "/api/skills/assign", { skillId, targetType, targetId }).then((res) => {
+      if (res && res.config) {
+        CFG = res.config;
+        normalizeCfg(CFG);
+      }
+      const roleName = targetType === "supervisor"
+        ? ((CFG.profiles || []).find((p) => p.id === targetId) || {}).name || "Supervisor"
+        : ((CFG.skills || []).find((a) => a.id === targetId) || {}).name || "Agent";
+      showMarketToast(`Assigned skill "${skillId}" to ${roleName}.`);
+      t.value = "";
+      renderMarketplacePane();
+      renderSupervisorPane();
+      renderAgentsPane();
+    }).catch(console.error);
   }
   // Marketplace assign skill to agent
   else if (t.matches(".market-agent-select")) {
@@ -1364,6 +1823,7 @@ $("#viewSettings").addEventListener("change", (e) => {
       CFG = c;
       normalizeCfg(CFG);
       syncAssignmentTable();
+      syncComposerModels();
     }
   } catch { trace("Server unreachable — start it with: node server.js"); return; }
   renderLogs();

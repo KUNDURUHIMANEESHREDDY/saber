@@ -11,8 +11,38 @@ function defCfg() {
   return {
     active: "generalist",
     profiles: [
-      { id: "generalist", name: "Generalist", domain: "general" },
-      { id: "coder", name: "Code Lead", domain: "software" },
+      {
+        id: "generalist",
+        name: "Generalist",
+        domain: "general",
+        skills: ["intent-parsing", "task-decomposition", "synthesis", "conflict-resolution", "policy-enforcement", "act-on-feedback"],
+        tools: ["delegate_task", "request_approval", "inspect_context", "agent_spawn"],
+        mcps: ["local"],
+      },
+      {
+        id: "coder",
+        name: "Code Lead",
+        domain: "software",
+        skills: ["architecture-review", "code-review", "task-decomposition", "refactoring-planning", "fix-ci", "ponytail", "generate-run-commands"],
+        tools: ["delegate_task", "inspect_context", "review_diff", "agent_spawn", "python_repl"],
+        mcps: ["local", "github", "filesystem"],
+      },
+      {
+        id: "security",
+        name: "Security Lead",
+        domain: "security",
+        skills: ["threat-modeling", "security-audit", "adversarial-review", "guardrail-enforcement", "compliance-check"],
+        tools: ["delegate_task", "request_approval", "inspect_context", "cancel_run"],
+        mcps: ["local", "filesystem"],
+      },
+      {
+        id: "researcher",
+        name: "Research Lead",
+        domain: "research",
+        skills: ["hypothesis-formulation", "source-verification", "fact-checking", "literature-review", "information-synthesis"],
+        tools: ["delegate_task", "inspect_context", "agent_spawn", "fetch_url"],
+        mcps: ["local", "github"],
+      },
     ],
     supervisor: {
       skills: ["intent-parsing", "task-decomposition", "synthesis", "conflict-resolution"],
@@ -20,16 +50,64 @@ function defCfg() {
       mcps: ["local"],
     },
     skills: [
-      { id: "researcher", name: "Web Researcher", cap: "research", skills: ["web-search", "content-extraction", "summarization"], tools: ["read_context", "fetch_url", "search_web"], mcps: ["local"], on: true },
-      { id: "coder", name: "Code Engineer", cap: "code", skills: ["javascript", "python", "refactoring"], tools: ["draft_change", "format_code", "syntax_check"], mcps: ["local"], on: true },
-      { id: "tools", name: "System Executor", cap: "exec", skills: ["shell-exec", "file-io", "docker"], tools: ["exec_cmd", "write_file", "read_file"], mcps: ["local"], on: true },
-      { id: "critic", name: "Quality Critic", cap: "review", skills: ["security-audit", "diff-review", "validation"], tools: ["review_diff", "verify_contract", "lint"], mcps: ["local"], on: true },
+      {
+        id: "researcher",
+        name: "Web Researcher",
+        cap: "research",
+        skills: ["web-search", "content-extraction", "summarization", "source-verification", "fact-checking"],
+        tools: ["read_context", "fetch_url", "search_web", "extract_content"],
+        mcps: ["local", "github"],
+        on: true,
+      },
+      {
+        id: "coder",
+        name: "Code Engineer",
+        cap: "code",
+        skills: ["javascript", "python", "refactoring", "fix-ci", "ponytail", "generate-run-commands", "syntax-check"],
+        tools: ["draft_change", "format_code", "syntax_check", "run_tests"],
+        mcps: ["local", "filesystem"],
+        on: true,
+      },
+      {
+        id: "tools",
+        name: "System Executor",
+        cap: "exec",
+        skills: ["shell-exec", "file-io", "docker", "troubleshoot", "process-management", "environment-setup"],
+        tools: ["exec_cmd", "write_file", "read_file", "kill_process"],
+        mcps: ["local", "filesystem"],
+        on: true,
+      },
+      {
+        id: "critic",
+        name: "Quality Critic",
+        cap: "review",
+        skills: ["security-audit", "diff-review", "validation", "code-review", "adversarial-testing", "lint"],
+        tools: ["review_diff", "verify_contract", "lint", "audit_security"],
+        mcps: ["local", "github"],
+        on: true,
+      },
+      {
+        id: "designer",
+        name: "Frontend Designer",
+        cap: "custom",
+        skills: ["frontend-design", "web-design-engineer", "ui-ux-pro-max", "shadcn", "canvas-design", "animate", "theme-factory"],
+        tools: ["draft_component", "preview_render", "inspect_css", "format_code"],
+        mcps: ["local", "filesystem"],
+        on: true,
+      },
     ],
     mcps: [
       { id: "local", name: "local-tools", tools: ["fetch", "exec", "write"], on: true },
       { id: "github", name: "github-mcp", tools: ["pull_request", "issue_read", "commit"], on: true },
       { id: "filesystem", name: "filesystem-mcp", tools: ["read_file", "write_file", "list_dir"], on: true },
     ],
+    models: [
+      { id: "claude-3-7-sonnet", name: "Claude 3.7 Sonnet", provider: "Anthropic", tag: "Recommended", desc: "Hybrid reasoning & deep code execution", context: "200k", on: true, default: true },
+      { id: "gpt-4o", name: "GPT-4o", provider: "OpenAI", tag: "Flagship", desc: "High-bandwidth multimodal intelligence", context: "128k", on: true, default: false },
+      { id: "deepseek-r1", name: "DeepSeek R1", provider: "DeepSeek", tag: "Reasoning", desc: "In-depth mathematical reasoning", context: "64k", on: true, default: false },
+      { id: "qwen-2-5-coder", name: "Qwen 2.5 Coder", provider: "Alibaba Cloud / Ollama", tag: "Fast", desc: "Fast open-source code generation", context: "32k", on: true, default: false },
+    ],
+    providers: { anthropic: "", openai: "", deepseek: "", ollamaUrl: "http://localhost:11434" },
     guard: { maxSteps: 8, timeoutS: 120, costCap: 5, approval: false },
   };
 }
@@ -42,6 +120,21 @@ try {
     // ponytail: migration ceiling for existing store.json shapes. Replace with formal schema migration when versioned.
     if (!store.config.supervisor) store.config.supervisor = defCfg().supervisor;
     if (!Array.isArray(store.config.mcps) || !store.config.mcps.length) store.config.mcps = defCfg().mcps;
+    if (!Array.isArray(store.config.models) || !store.config.models.length) store.config.models = defCfg().models;
+    if (!store.config.providers) store.config.providers = defCfg().providers;
+    if (Array.isArray(store.config.profiles)) {
+      store.config.profiles.forEach((p) => {
+        if (!Array.isArray(p.skills) || !p.skills.length) {
+          const match = defCfg().profiles.find((x) => x.id === p.id);
+          p.skills = match ? match.skills : ["intent-parsing", "task-decomposition", "synthesis"];
+        }
+        if (!Array.isArray(p.tools) || !p.tools.length) {
+          const match = defCfg().profiles.find((x) => x.id === p.id);
+          p.tools = match ? match.tools : ["delegate_task", "request_approval", "inspect_context", "agent_spawn"];
+        }
+        if (!Array.isArray(p.mcps) || !p.mcps.length) p.mcps = ["local"];
+      });
+    }
     if (Array.isArray(store.config.skills)) {
       store.config.skills.forEach((s) => {
         if (!Array.isArray(s.skills)) s.skills = [s.cap || "general"];
@@ -75,14 +168,17 @@ async function runSim(goal) {
   const runId = "r" + Date.now().toString(36) + (runN++);
   const cfg = store.config, g = cfg.guard;
   const prof = cfg.profiles.find((p) => p.id === cfg.active) || cfg.profiles[0];
-  const sup = cfg.supervisor || { skills: [], tools: [], mcps: [] };
+  const supSkills = (prof && Array.isArray(prof.skills) && prof.skills.length) ? prof.skills : (cfg.supervisor ? cfg.supervisor.skills : []);
+  const supTools = (prof && Array.isArray(prof.tools) && prof.tools.length) ? prof.tools : (cfg.supervisor ? cfg.supervisor.tools : []);
+  const supMcps = (prof && Array.isArray(prof.mcps) && prof.mcps.length) ? prof.mcps : (cfg.supervisor ? cfg.supervisor.mcps : []);
+
   const E = (dir, s, t, type, payload) =>
     emit({ dir, source: s, target: t, type, payload: String(payload).slice(0, 2000), runId });
   E("IN", "user", "supervisor", "user_message", goal);
   E("INTERNAL", "supervisor", "supervisor", "thinking", `parse intent · profile ${prof.name} (${prof.domain})`);
-  if (sup.skills.length || sup.tools.length || sup.mcps.length) {
+  if (supSkills.length || supTools.length || supMcps.length) {
     E("INTERNAL", "supervisor", "supervisor", "thinking",
-      `supervisor config · skills=[${(sup.skills || []).join(", ")}] · tools=[${(sup.tools || []).join(", ")}] · mcps=[${(sup.mcps || []).join(", ")}]`);
+      `supervisor config [${prof.name}] · skills=[${supSkills.join(", ")}] · tools=[${supTools.join(", ")}] · mcps=[${supMcps.join(", ")}]`);
   }
   E("INTERNAL", "supervisor", "supervisor", "policy",
     `guardrails: maxSteps=${g.maxSteps} timeout=${g.timeoutS}s costCap=$${g.costCap} approval=${g.approval ? "ON" : "OFF"}`);
@@ -139,6 +235,84 @@ function mcpTools() {
   return t.length ? t : ["built-in"];
 }
 
+function getSkillCategory(id) {
+  if (["frontend-design", "design-taste-frontend", "ui-ux-pro-max", "shadcn", "canvas-design", "animate", "theme-factory", "web-design-engineer"].includes(id)) {
+    return { category: "Design & Frontend", icon: "ti-palette", color: "var(--blue)" };
+  }
+  if (["code-review", "troubleshoot", "fix-ci", "ponytail", "generate-run-commands"].includes(id)) {
+    return { category: "Engineering & QA", icon: "ti-code", color: "var(--green)" };
+  }
+  if (["commit", "create-pr", "create-draft-pr", "update-pr", "merge", "sync", "sync-upstream", "update-skills"].includes(id)) {
+    return { category: "Git & Automation", icon: "ti-git-branch", color: "var(--violet)" };
+  }
+  if (["algorithmic-art"].includes(id)) {
+    return { category: "Generative Art", icon: "ti-sparkles", color: "#d97706" };
+  }
+  return { category: "General Agent", icon: "ti-tool", color: "var(--text)" };
+}
+
+function loadLocalSkills() {
+  const dir = path.join(__dirname, ".agents", "skills");
+  if (!fs.existsSync(dir)) return [];
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  const result = [];
+  const cfg = store.config || {};
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const skillPath = path.join(dir, entry.name, "SKILL.md");
+    let name = entry.name;
+    let description = "Specialized AI skill package with operational prompts and constraints.";
+
+    if (fs.existsSync(skillPath)) {
+      try {
+        const content = fs.readFileSync(skillPath, "utf8");
+        const match = content.match(/^---\s*([\s\S]*?)\s*---/);
+        if (match) {
+          const rawFm = match[1];
+          const nMatch = rawFm.match(/name:\s*(.+)/);
+          if (nMatch) name = nMatch[1].trim().replace(/^["\x27]|["\x27]$/g, "");
+          const dMatch = rawFm.match(/description:\s*(?:>|\|)?\s*\n?([\s\S]*?)(?=\n[a-z0-9_-]+:|$)/i);
+          if (dMatch) {
+            description = dMatch[1].replace(/\n+/g, " ").trim().replace(/^["\x27]|["\x27]$/g, "");
+          }
+        }
+      } catch {}
+    }
+
+    const cat = getSkillCategory(entry.name);
+    const installedIn = [];
+
+    // Check supervisor profiles
+    if (Array.isArray(cfg.profiles)) {
+      cfg.profiles.forEach((p) => {
+        if (Array.isArray(p.skills) && p.skills.includes(entry.name)) {
+          installedIn.push({ type: "supervisor", id: p.id, name: `${p.name} (Supervisor)` });
+        }
+      });
+    }
+    // Check worker agents
+    if (Array.isArray(cfg.skills)) {
+      cfg.skills.forEach((a) => {
+        if (Array.isArray(a.skills) && a.skills.includes(entry.name)) {
+          installedIn.push({ type: "agent", id: a.id, name: `${a.name} (Agent)` });
+        }
+      });
+    }
+
+    result.push({
+      id: entry.name,
+      name,
+      description: description.slice(0, 240),
+      category: cat.category,
+      icon: cat.icon,
+      color: cat.color,
+      installedIn,
+    });
+  }
+  return result;
+}
+
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json" };
 
 function body(req) {
@@ -167,6 +341,61 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { ok: true });
     }
     if (u.pathname === "/api/config" && req.method === "GET") return json(res, 200, store.config);
+    if (u.pathname === "/api/skills/library" && req.method === "GET") {
+      return json(res, 200, { skills: loadLocalSkills() });
+    }
+    if (u.pathname === "/api/skills/assign" && req.method === "POST") {
+      const b = await body(req);
+      const skillId = String(b.skillId || "").trim();
+      const targetType = String(b.targetType || "agent").trim();
+      const targetId = String(b.targetId || "").trim();
+      if (!skillId || !targetId) return json(res, 400, { error: "skillId and targetId required" });
+
+      if (targetType === "supervisor") {
+        const prof = store.config.profiles.find((p) => p.id === targetId);
+        if (prof) {
+          if (!Array.isArray(prof.skills)) prof.skills = [];
+          if (!prof.skills.includes(skillId)) prof.skills.push(skillId);
+        }
+        if (store.config.supervisor && Array.isArray(store.config.supervisor.skills)) {
+          if (!store.config.supervisor.skills.includes(skillId)) store.config.supervisor.skills.push(skillId);
+        }
+      } else {
+        const agent = store.config.skills.find((a) => a.id === targetId);
+        if (agent) {
+          if (!Array.isArray(agent.skills)) agent.skills = [];
+          if (!agent.skills.includes(skillId)) agent.skills.push(skillId);
+        }
+      }
+      persist();
+      emit({ dir: "INTERNAL", source: "system", target: "system", type: "config", payload: `skill ${skillId} assigned to ${targetType}:${targetId}` });
+      return json(res, 200, { ok: true, config: store.config, library: loadLocalSkills() });
+    }
+    if (u.pathname === "/api/skills/unassign" && req.method === "POST") {
+      const b = await body(req);
+      const skillId = String(b.skillId || "").trim();
+      const targetType = String(b.targetType || "agent").trim();
+      const targetId = String(b.targetId || "").trim();
+      if (!skillId || !targetId) return json(res, 400, { error: "skillId and targetId required" });
+
+      if (targetType === "supervisor") {
+        const prof = store.config.profiles.find((p) => p.id === targetId);
+        if (prof && Array.isArray(prof.skills)) {
+          prof.skills = prof.skills.filter((s) => s !== skillId);
+        }
+        if (store.config.supervisor && Array.isArray(store.config.supervisor.skills)) {
+          store.config.supervisor.skills = store.config.supervisor.skills.filter((s) => s !== skillId);
+        }
+      } else {
+        const agent = store.config.skills.find((a) => a.id === targetId);
+        if (agent && Array.isArray(agent.skills)) {
+          agent.skills = agent.skills.filter((s) => s !== skillId);
+        }
+      }
+      persist();
+      emit({ dir: "INTERNAL", source: "system", target: "system", type: "config", payload: `skill ${skillId} unassigned from ${targetType}:${targetId}` });
+      return json(res, 200, { ok: true, config: store.config, library: loadLocalSkills() });
+    }
     if (u.pathname === "/api/logs" && req.method === "POST") {
       const b = await body(req);
       if (!b.dir || !b.source || !b.target || !b.type) return json(res, 400, { error: "bad event" });
