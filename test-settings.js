@@ -3,7 +3,14 @@ const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
 
+// store.json is gitignored (it holds provider keys and user prompts). Seed it from
+// the committed example so a fresh clone can run this check.
 const storePath = path.join(__dirname, "store.json");
+const examplePath = path.join(__dirname, "store.example.json");
+if (!fs.existsSync(storePath)) {
+  assert(fs.existsSync(examplePath), "store.json missing and no store.example.json to seed from");
+  fs.copyFileSync(examplePath, storePath);
+}
 const raw = JSON.parse(fs.readFileSync(storePath, "utf8"));
 const cfg = raw.config;
 

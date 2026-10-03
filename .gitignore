@@ -1,0 +1,22 @@
+# Runtime state — contains provider API keys and up to 1000 user prompts/responses.
+# Recreated automatically by server.js on first run; see store.example.json for the shape.
+store.json
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp

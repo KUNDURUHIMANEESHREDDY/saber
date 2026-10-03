@@ -1,0 +1,865 @@
+{
+  "logs": [],
+  "config": {
+    "active": "coder",
+    "profiles": [
+      {
+        "id": "generalist",
+        "name": "Generalist",
+        "domain": "general",
+        "skills": [
+          "intent-parsing",
+          "task-decomposition",
+          "synthesis",
+          "conflict-resolution",
+          "policy-enforcement",
+          "act-on-feedback",
+          "generalist",
+          "threat-modeling",
+          "security-audit",
+          "adversarial-review",
+          "guardrail-enforcement",
+          "compliance-check",
+          "diff-review",
+          "validation",
+          "code-review",
+          "adversarial-testing",
+          "lint"
+        ],
+        "tools": [
+          "delegate_task",
+          "request_approval",
+          "inspect_context",
+          "agent_spawn"
+        ],
+        "mcps": [
+          "local"
+        ]
+      },
+      {
+        "id": "coder",
+        "name": "Code Lead",
+        "domain": "software",
+        "skills": [
+          "architecture-review",
+          "code-review",
+          "task-decomposition",
+          "refactoring-planning",
+          "fix-ci",
+          "ponytail",
+          "generate-run-commands",
+          "coder",
+          "threat-modeling",
+          "security-audit",
+          "adversarial-review",
+          "guardrail-enforcement",
+          "compliance-check",
+          "diff-review",
+          "validation",
+          "adversarial-testing",
+          "lint",
+          "policy-enforcement",
+          "conflict-resolution"
+        ],
+        "tools": [
+          "delegate_task",
+          "inspect_context",
+          "review_diff",
+          "agent_spawn",
+          "python_repl"
+        ],
+        "mcps": [
+          "local",
+          "github",
+          "filesystem"
+        ]
+      },
+      {
+        "id": "security",
+        "name": "Security Lead",
+        "domain": "security",
+        "skills": [
+          "threat-modeling",
+          "security-audit",
+          "adversarial-review",
+          "guardrail-enforcement",
+          "compliance-check",
+          "security",
+          "diff-review",
+          "validation",
+          "code-review",
+          "adversarial-testing",
+          "lint",
+          "policy-enforcement",
+          "conflict-resolution"
+        ],
+        "tools": [
+          "delegate_task",
+          "request_approval",
+          "inspect_context",
+          "cancel_run"
+        ],
+        "mcps": [
+          "local",
+          "filesystem"
+        ]
+      },
+      {
+        "id": "researcher",
+        "name": "Research Lead",
+        "domain": "research",
+        "skills": [
+          "hypothesis-formulation",
+          "source-verification",
+          "fact-checking",
+          "literature-review",
+          "information-synthesis",
+          "researcher",
+          "threat-modeling",
+          "security-audit",
+          "adversarial-review",
+          "guardrail-enforcement",
+          "compliance-check",
+          "diff-review",
+          "validation",
+          "code-review",
+          "adversarial-testing",
+          "lint",
+          "policy-enforcement",
+          "conflict-resolution"
+        ],
+        "tools": [
+          "delegate_task",
+          "inspect_context",
+          "agent_spawn",
+          "fetch_url"
+        ],
+        "mcps": [
+          "local",
+          "github"
+        ]
+      }
+    ],
+    "skills": [
+      {
+        "id": "researcher",
+        "name": "Web Researcher",
+        "cap": "research",
+        "skills": [
+          "web-search",
+          "content-extraction",
+          "summarization",
+          "source-verification",
+          "fact-checking",
+          "researcher",
+          "threat-modeling",
+          "security-audit",
+          "adversarial-review",
+          "guardrail-enforcement",
+          "compliance-check",
+          "diff-review",
+          "validation",
+          "code-review",
+          "adversarial-testing",
+          "lint",
+          "policy-enforcement",
+          "conflict-resolution"
+        ],
+        "tools": [
+          "read_context",
+          "fetch_url",
+          "search_web",
+          "extract_content"
+        ],
+        "mcps": [
+          "local",
+          "github"
+        ],
+        "on": true
+      },
+      {
+        "id": "coder",
+        "name": "Code Engineer",
+        "cap": "code",
+        "skills": [
+          "javascript",
+          "python",
+          "refactoring",
+          "fix-ci",
+          "ponytail",
+          "generate-run-commands",
+          "syntax-check",
+          "coder-agent",
+          "threat-modeling",
+          "security-audit",
+          "adversarial-review",
+          "guardrail-enforcement",
+          "compliance-check",
+          "diff-review",
+          "validation",
+          "code-review",
+          "adversarial-testing",
+          "lint",
+          "policy-enforcement",
+          "conflict-resolution"
+        ],
+        "tools": [
+          "draft_change",
+          "format_code",
+          "syntax_check",
+          "run_tests"
+        ],
+        "mcps": [
+          "local",
+          "filesystem"
+        ],
+        "on": true
+      },
+      {
+        "id": "tools",
+        "name": "System Executor",
+        "cap": "exec",
+        "skills": [
+          "shell-exec",
+          "file-io",
+          "docker",
+          "troubleshoot",
+          "process-management",
+          "environment-setup",
+          "tools",
+          "threat-modeling",
+          "security-audit",
+          "adversarial-review",
+          "guardrail-enforcement",
+          "compliance-check",
+          "diff-review",
+          "validation",
+          "code-review",
+          "adversarial-testing",
+          "lint",
+          "policy-enforcement",
+          "conflict-resolution"
+        ],
+        "tools": [
+          "exec_cmd",
+          "write_file",
+          "read_file",
+          "kill_process"
+        ],
+        "mcps": [
+          "local",
+          "filesystem"
+        ],
+        "on": true
+      },
+      {
+        "id": "critic",
+        "name": "Quality Critic",
+        "cap": "review",
+        "skills": [
+          "security-audit",
+          "diff-review",
+          "validation",
+          "code-review",
+          "adversarial-testing",
+          "lint",
+          "critic",
+          "threat-modeling",
+          "adversarial-review",
+          "guardrail-enforcement",
+          "compliance-check",
+          "policy-enforcement",
+          "conflict-resolution"
+        ],
+        "tools": [
+          "review_diff",
+          "verify_contract",
+          "lint",
+          "audit_security"
+        ],
+        "mcps": [
+          "local",
+          "github"
+        ],
+        "on": true
+      },
+      {
+        "id": "designer",
+        "name": "Frontend Designer",
+        "cap": "custom",
+        "skills": [
+          "frontend-design",
+          "web-design-engineer",
+          "ui-ux-pro-max",
+          "shadcn",
+          "canvas-design",
+          "animate",
+          "theme-factory",
+          "designer",
+          "threat-modeling",
+          "security-audit",
+          "adversarial-review",
+          "guardrail-enforcement",
+          "compliance-check",
+          "diff-review",
+          "validation",
+          "code-review",
+          "adversarial-testing",
+          "lint",
+          "policy-enforcement",
+          "conflict-resolution"
+        ],
+        "tools": [
+          "draft_component",
+          "preview_render",
+          "inspect_css",
+          "format_code"
+        ],
+        "mcps": [
+          "local",
+          "filesystem"
+        ],
+        "on": true
+      }
+    ],
+    "mcps": [
+      {
+        "id": "local",
+        "name": "local-tools",
+        "tools": [
+          "fetch",
+          "exec",
+          "write"
+        ],
+        "on": true
+      },
+      {
+        "id": "github",
+        "name": "github-mcp",
+        "tools": [
+          "pull_request",
+          "issue_read",
+          "commit"
+        ],
+        "on": true
+      },
+      {
+        "id": "filesystem",
+        "name": "filesystem-mcp",
+        "tools": [
+          "read_file",
+          "write_file",
+          "list_dir"
+        ],
+        "on": true
+      },
+      {
+        "id": "github-mcp-server",
+        "name": "github/github-mcp-server",
+        "tools": [
+          "query",
+          "exec"
+        ],
+        "on": true
+      },
+      {
+        "id": "postgres-mcp",
+        "name": "postgres-mcp",
+        "tools": [
+          "query",
+          "exec"
+        ],
+        "on": true
+      }
+    ],
+    "models": [
+      {
+        "id": "ag/gemini-3.8-flash",
+        "name": "Gemini 3.8 Flash (Router)",
+        "provider": "Router",
+        "tag": "Fast",
+        "desc": "Google Gemini 3.8 Flash via Local Router",
+        "context": "1M",
+        "on": true,
+        "default": true
+      },
+      {
+        "id": "code",
+        "name": "Code Specialist (Router)",
+        "provider": "Router",
+        "tag": "Code",
+        "desc": "Code Generation & Execution Model via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "ag/claude-opus-4-6-thinking",
+        "name": "Claude Opus 4.6 (Router)",
+        "provider": "Router",
+        "tag": "Reasoning",
+        "desc": "Extended reasoning model via Local Router",
+        "context": "200k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "claude",
+        "name": "Claude (Router)",
+        "provider": "Router",
+        "tag": "General",
+        "desc": "Claude general orchestrator via Router",
+        "context": "200k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "all",
+        "name": "all",
+        "provider": "Router",
+        "tag": "General",
+        "desc": "all via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "nvidia",
+        "name": "nvidia",
+        "provider": "Router",
+        "tag": "General",
+        "desc": "nvidia via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "gemini",
+        "name": "gemini",
+        "provider": "Router",
+        "tag": "Fast",
+        "desc": "gemini via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+        "name": "openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+        "provider": "Router",
+        "tag": "Reasoning",
+        "desc": "openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "openrouter/cohere/north-mini-code:free",
+        "name": "openrouter/cohere/north-mini-code:free",
+        "provider": "Router",
+        "tag": "Code",
+        "desc": "openrouter/cohere/north-mini-code:free via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+        "name": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+        "provider": "Router",
+        "tag": "General",
+        "desc": "openrouter/nvidia/nemotron-3-super-120b-a12b:free via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "openrouter/google/gemma-4-31b-it:free",
+        "name": "openrouter/google/gemma-4-31b-it:free",
+        "provider": "Router",
+        "tag": "General",
+        "desc": "openrouter/google/gemma-4-31b-it:free via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "openrouter/inclusionai/ling-3.0-flash-sante:free",
+        "name": "openrouter/inclusionai/ling-3.0-flash-sante:free",
+        "provider": "Router",
+        "tag": "Fast",
+        "desc": "openrouter/inclusionai/ling-3.0-flash-sante:free via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "openrouter/inclusionai/ling-3.0-flash-fin:free",
+        "name": "openrouter/inclusionai/ling-3.0-flash-fin:free",
+        "provider": "Router",
+        "tag": "Fast",
+        "desc": "openrouter/inclusionai/ling-3.0-flash-fin:free via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "openrouter/poolside/laguna-s-2.1:free",
+        "name": "openrouter/poolside/laguna-s-2.1:free",
+        "provider": "Router",
+        "tag": "General",
+        "desc": "openrouter/poolside/laguna-s-2.1:free via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "openrouter/google/gemma-4-26b-a4b-it:free",
+        "name": "openrouter/google/gemma-4-26b-a4b-it:free",
+        "provider": "Router",
+        "tag": "General",
+        "desc": "openrouter/google/gemma-4-26b-a4b-it:free via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "openrouter/poolside/laguna-xs-2.1:free",
+        "name": "openrouter/poolside/laguna-xs-2.1:free",
+        "provider": "Router",
+        "tag": "General",
+        "desc": "openrouter/poolside/laguna-xs-2.1:free via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "openrouter/qwen/qwen3.8-27b:free",
+        "name": "openrouter/qwen/qwen3.8-27b:free",
+        "provider": "Router",
+        "tag": "General",
+        "desc": "openrouter/qwen/qwen3.8-27b:free via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
+        "name": "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
+        "provider": "Router",
+        "tag": "General",
+        "desc": "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "openrouter/deepseek/deepseek-v4-flash-0731:free",
+        "name": "openrouter/deepseek/deepseek-v4-flash-0731:free",
+        "provider": "Router",
+        "tag": "Fast",
+        "desc": "openrouter/deepseek/deepseek-v4-flash-0731:free via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "openrouter/thinkingmachines/inkling-small:free",
+        "name": "openrouter/thinkingmachines/inkling-small:free",
+        "provider": "Router",
+        "tag": "Reasoning",
+        "desc": "openrouter/thinkingmachines/inkling-small:free via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "openrouter/thinkingmachines/inkling:free",
+        "name": "openrouter/thinkingmachines/inkling:free",
+        "provider": "Router",
+        "tag": "Reasoning",
+        "desc": "openrouter/thinkingmachines/inkling:free via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "openrouter/openrouter/free",
+        "name": "openrouter/openrouter/free",
+        "provider": "Router",
+        "tag": "General",
+        "desc": "openrouter/openrouter/free via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "openrouter/nvidia/nemotron-3.5-lightning:free",
+        "name": "openrouter/nvidia/nemotron-3.5-lightning:free",
+        "provider": "Router",
+        "tag": "General",
+        "desc": "openrouter/nvidia/nemotron-3.5-lightning:free via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "openrouter/dots-studio/dots-3-note-preview:free",
+        "name": "openrouter/dots-studio/dots-3-note-preview:free",
+        "provider": "Router",
+        "tag": "General",
+        "desc": "openrouter/dots-studio/dots-3-note-preview:free via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "openrouter/nex-agi/nex-n2.5-mini:free",
+        "name": "openrouter/nex-agi/nex-n2.5-mini:free",
+        "provider": "Router",
+        "tag": "Fast",
+        "desc": "openrouter/nex-agi/nex-n2.5-mini:free via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "openrouter/nex-agi/nex-n2.5-pro:free",
+        "name": "openrouter/nex-agi/nex-n2.5-pro:free",
+        "provider": "Router",
+        "tag": "General",
+        "desc": "openrouter/nex-agi/nex-n2.5-pro:free via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "openrouter/inclusionai/ling-3.0-flash-vl:free",
+        "name": "openrouter/inclusionai/ling-3.0-flash-vl:free",
+        "provider": "Router",
+        "tag": "Fast",
+        "desc": "openrouter/inclusionai/ling-3.0-flash-vl:free via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "ag/gemini-3.8-flash-high",
+        "name": "ag/gemini-3.8-flash-high",
+        "provider": "Router",
+        "tag": "Fast",
+        "desc": "ag/gemini-3.8-flash-high via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "ag/gemini-3.8-flash-medium",
+        "name": "ag/gemini-3.8-flash-medium",
+        "provider": "Router",
+        "tag": "Fast",
+        "desc": "ag/gemini-3.8-flash-medium via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "ag/gemini-3.8-flash-low",
+        "name": "ag/gemini-3.8-flash-low",
+        "provider": "Router",
+        "tag": "Fast",
+        "desc": "ag/gemini-3.8-flash-low via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "ag/gemini-3.7-flash-high",
+        "name": "ag/gemini-3.7-flash-high",
+        "provider": "Router",
+        "tag": "Fast",
+        "desc": "ag/gemini-3.7-flash-high via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "ag/gemini-3.7-flash-medium",
+        "name": "ag/gemini-3.7-flash-medium",
+        "provider": "Router",
+        "tag": "Fast",
+        "desc": "ag/gemini-3.7-flash-medium via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "ag/gemini-3.7-flash-low",
+        "name": "ag/gemini-3.7-flash-low",
+        "provider": "Router",
+        "tag": "Fast",
+        "desc": "ag/gemini-3.7-flash-low via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "ag/gemini-3.6-flash-high",
+        "name": "ag/gemini-3.6-flash-high",
+        "provider": "Router",
+        "tag": "Fast",
+        "desc": "ag/gemini-3.6-flash-high via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "ag/gemini-3.6-flash-medium",
+        "name": "ag/gemini-3.6-flash-medium",
+        "provider": "Router",
+        "tag": "Fast",
+        "desc": "ag/gemini-3.6-flash-medium via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "ag/gemini-3.6-flash-low",
+        "name": "ag/gemini-3.6-flash-low",
+        "provider": "Router",
+        "tag": "Fast",
+        "desc": "ag/gemini-3.6-flash-low via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "ag/gemini-3.5-flash-high",
+        "name": "ag/gemini-3.5-flash-high",
+        "provider": "Router",
+        "tag": "Fast",
+        "desc": "ag/gemini-3.5-flash-high via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "ag/gemini-3-flash-agent",
+        "name": "ag/gemini-3-flash-agent",
+        "provider": "Router",
+        "tag": "Fast",
+        "desc": "ag/gemini-3-flash-agent via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "ag/gemini-3.5-flash-low",
+        "name": "ag/gemini-3.5-flash-low",
+        "provider": "Router",
+        "tag": "Fast",
+        "desc": "ag/gemini-3.5-flash-low via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "ag/gemini-3.5-flash-extra-low",
+        "name": "ag/gemini-3.5-flash-extra-low",
+        "provider": "Router",
+        "tag": "Fast",
+        "desc": "ag/gemini-3.5-flash-extra-low via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "ag/gemini-pro-agent",
+        "name": "ag/gemini-pro-agent",
+        "provider": "Router",
+        "tag": "Fast",
+        "desc": "ag/gemini-pro-agent via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "ag/gemini-3.1-pro-low",
+        "name": "ag/gemini-3.1-pro-low",
+        "provider": "Router",
+        "tag": "Fast",
+        "desc": "ag/gemini-3.1-pro-low via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "ag/gpt-oss-120b-medium",
+        "name": "ag/gpt-oss-120b-medium",
+        "provider": "Router",
+        "tag": "General",
+        "desc": "ag/gpt-oss-120b-medium via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      },
+      {
+        "id": "ag/gemini-3-flash",
+        "name": "ag/gemini-3-flash",
+        "provider": "Router",
+        "tag": "Fast",
+        "desc": "ag/gemini-3-flash via Router",
+        "context": "128k",
+        "on": true,
+        "default": false
+      }
+    ],
+    "providers": {
+      "anthropic": "",
+      "openai": "",
+      "deepseek": "",
+      "ollamaUrl": "http://localhost:11434",
+      "routerUrl": "http://localhost:20128/v1",
+      "routerKey": ""
+    },
+    "guard": {
+      "maxSteps": 8,
+      "timeoutS": 120,
+      "costCap": 5,
+      "approval": false
+    },
+    "supervisor": {
+      "skills": [
+        "intent-parsing",
+        "task-decomposition",
+        "synthesis",
+        "conflict-resolution",
+        "generalist",
+        "coder",
+        "security",
+        "researcher",
+        "threat-modeling",
+        "security-audit",
+        "adversarial-review",
+        "guardrail-enforcement",
+        "compliance-check",
+        "diff-review",
+        "validation",
+        "code-review",
+        "adversarial-testing",
+        "lint",
+        "policy-enforcement"
+      ],
+      "tools": [
+        "delegate_task",
+        "request_approval",
+        "inspect_context",
+        "agent_spawn"
+      ],
+      "mcps": [
+        "local"
+      ]
+    }
+  },
+  "seq": 306
+}

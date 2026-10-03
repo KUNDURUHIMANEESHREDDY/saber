@@ -113,7 +113,7 @@ function defCfg() {
       deepseek: "",
       ollamaUrl: "http://localhost:11434",
       routerUrl: "http://localhost:20128/v1",
-      routerKey: "sk-9afc8f4ae33bdb57-rk489v-38af7159",
+      routerKey: "",
     },
     guard: { maxSteps: 8, timeoutS: 120, costCap: 5, approval: false },
   };
@@ -130,7 +130,6 @@ try {
     if (!Array.isArray(store.config.models) || !store.config.models.length) store.config.models = defCfg().models;
     if (!store.config.providers) store.config.providers = defCfg().providers;
     if (!store.config.providers.routerUrl) store.config.providers.routerUrl = "http://localhost:20128/v1";
-    if (!store.config.providers.routerKey) store.config.providers.routerKey = "sk-9afc8f4ae33bdb57-rk489v-38af7159";
     if (Array.isArray(store.config.profiles)) {
       store.config.profiles.forEach((p) => {
         if (!Array.isArray(p.skills) || !p.skills.length) {
