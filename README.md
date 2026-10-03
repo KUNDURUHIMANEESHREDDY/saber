@@ -170,9 +170,9 @@ under `demos/` return `{"error":"not found"}` when opened over HTTP. They work o
 
 ## Security issues
 
-**1. A live API key is committed.** `sk-9afc8f4ae33bdb57-rk489v-38af7159` appears at `server.js:116` and
-`server.js:133`, in `store.json`, and in `agent system/server.js`. This is a public repository — **rotate this key
-now.**
+**1. A live API key was committed.** A router key was hardcoded at `server.js:116` and `server.js:133`, and
+present in `store.json` and the stale `agent system/` copy. All four are removed in `f18d180`. It was published in
+a public repository, so **rotate that key regardless** — removing it from HEAD does not remove it from git history.
 
 **2. `GET /api/config` returns every provider key with no authentication**, and the server binds all interfaces
 (no host argument on `listen()`).
