@@ -55,6 +55,11 @@ async function waitForServer(base) {
   const base = "http://127.0.0.1:" + port;
   try {
     await waitForServer(base);
+    const malformedPath = await fetch(base + "/%E0%A4%A");
+    assert.equal(malformedPath.status, 404, "malformed percent-encoding must be rejected without crashing the server");
+    const healthAfterMalformedPath = await fetch(base + "/api/health");
+    assert.equal(healthAfterMalformedPath.status, 200, "static path rejection must not interrupt the local API");
+
     const configResponse = await fetch(base + "/api/config");
     assert.equal(configResponse.status, 200);
     const config = await configResponse.json();
