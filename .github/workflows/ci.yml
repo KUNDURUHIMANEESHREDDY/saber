@@ -26,6 +26,7 @@ jobs:
       - name: Syntax-check both server copies
         run: |
           node --check server.js
+          node --check static-path.js
           node --check "agent system/server.js"
           node --check public/overlord.js
           node --check "agent system/public/overlord.js"
