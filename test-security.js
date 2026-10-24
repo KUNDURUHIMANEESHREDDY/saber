@@ -138,8 +138,16 @@ async function waitForServer(base) {
     assert.equal(malformedJson.status, 400, "malformed JSON must return HTTP 400");
     console.log("Security regression checks passed: env-only credentials, redaction, loopback binding, CSRF origin guard, and bounded request bodies.");
   } finally {
-    child.kill("SIGTERM");
-    await new Promise((resolve) => child.once("exit", resolve));
+    // Startup failures can reach finally after the child has already emitted
+    // `exit`. Check its terminal state before waiting so cleanup cannot hang
+    // forever on an event that has already happened.
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill("SIGTERM");
+      await new Promise((resolve) => {
+        if (child.exitCode !== null || child.signalCode !== null) return resolve();
+        child.once("exit", resolve);
+      });
+    }
     fs.rmSync(temp, { recursive: true, force: true });
   }
 })().catch((error) => {
