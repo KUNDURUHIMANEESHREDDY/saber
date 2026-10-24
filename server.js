@@ -558,7 +558,7 @@ const server = http.createServer(async (req, res) => {
   const u = new URL(req.url, "http://x");
   try {
     const requestHost = String(req.headers.host || "").toLowerCase();
-    if (!/^(localhost|127\\.0\\.0\\.1|\\[::1\\])(?::\\d{1,5})?$/.test(requestHost)) {
+    if (!/^(localhost|127\.0\.0\.1|\[::1\])(?::\d{1,5})?$/.test(requestHost)) {
       return json(res, 403, { error: "Local requests only" });
     }
     if (MUTATING_METHODS.has(req.method)) {
