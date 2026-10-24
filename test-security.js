@@ -39,6 +39,33 @@ let output = "";
 child.stdout.on("data", (chunk) => { output += chunk.toString(); });
 child.stderr.on("data", (chunk) => { output += chunk.toString(); });
 
+function hasExited(process) {
+  return process.exitCode !== null || process.signalCode !== null;
+}
+
+function waitForExit(process, timeoutMs) {
+  return new Promise((resolve) => {
+    if (hasExited(process)) return resolve({ code: process.exitCode, signal: process.signalCode });
+    const onExit = (code, signal) => {
+      clearTimeout(timer);
+      resolve({ code, signal });
+    };
+    const timer = setTimeout(() => {
+      process.removeListener("exit", onExit);
+      resolve(null);
+    }, timeoutMs);
+    process.once("exit", onExit);
+  });
+}
+
+async function stopChild(process) {
+  if (hasExited(process)) return;
+  process.kill("SIGTERM");
+  if (await waitForExit(process, 1_000)) return;
+  process.kill("SIGKILL");
+  await waitForExit(process, 1_000);
+}
+
 async function waitForServer(base) {
   for (let i = 0; i < 60; i++) {
     if (child.exitCode !== null) throw new Error("server exited before health check: " + output);
@@ -105,8 +132,12 @@ async function waitForServer(base) {
     });
     let remoteOutput = "";
     remote.stderr.on("data", (chunk) => { remoteOutput += chunk.toString(); });
-    const remoteExit = await new Promise((resolve) => remote.on("exit", resolve));
-    assert.notEqual(remoteExit, 0, "server must refuse non-loopback binds");
+    const remoteExit = await waitForExit(remote, 2_000);
+    if (!remoteExit) {
+      await stopChild(remote);
+      assert.fail("server did not refuse a non-loopback bind within 2 seconds");
+    }
+    assert.notEqual(remoteExit.code, 0, "server must refuse non-loopback binds");
     assert.match(remoteOutput, /local-only/i);
 
     const rejectedCrossOrigin = await fetch(base + "/api/logs", {
@@ -138,16 +169,7 @@ async function waitForServer(base) {
     assert.equal(malformedJson.status, 400, "malformed JSON must return HTTP 400");
     console.log("Security regression checks passed: env-only credentials, redaction, loopback binding, CSRF origin guard, and bounded request bodies.");
   } finally {
-    // Startup failures can reach finally after the child has already emitted
-    // `exit`. Check its terminal state before waiting so cleanup cannot hang
-    // forever on an event that has already happened.
-    if (child.exitCode === null && child.signalCode === null) {
-      child.kill("SIGTERM");
-      await new Promise((resolve) => {
-        if (child.exitCode !== null || child.signalCode !== null) return resolve();
-        child.once("exit", resolve);
-      });
-    }
+    await stopChild(child);
     fs.rmSync(temp, { recursive: true, force: true });
   }
 })().catch((error) => {
