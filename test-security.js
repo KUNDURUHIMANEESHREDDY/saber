@@ -1,5 +1,6 @@
 "use strict";
 const assert = require("node:assert/strict");
+const http = require("node:http");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -53,8 +54,15 @@ async function waitForServer(base) {
     assert.equal(fs.readFileSync(storePath, "utf8").includes("persisted-router-secret-test"), false);
     assert.equal(fs.readFileSync(storePath, "utf8").includes("persisted-anthropic-secret-test"), false);
 
-    const hostileHost = await fetch(base + "/api/config", { headers: { Host: "attacker.example" } });
-    assert.equal(hostileHost.status, 403, "DNS-rebinding-style Host headers must be rejected");
+    const hostileStatus = await new Promise((resolve, reject) => {
+      const request = http.request({ hostname: "127.0.0.1", port, path: "/api/config", headers: { Host: "attacker.example" } }, (response) => {
+        response.resume();
+        resolve(response.statusCode);
+      });
+      request.on("error", reject);
+      request.end();
+    });
+    assert.equal(hostileStatus, 403, "DNS-rebinding-style Host headers must be rejected");
 
     config.providers.routerKey = "request-body-secret-test";
     const rejectedConfig = await fetch(base + "/api/config", {
