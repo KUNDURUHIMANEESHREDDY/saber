@@ -2,6 +2,7 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const { resolvePublicFile } = require("../static-path");
 
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || "127.0.0.1";
@@ -701,8 +702,8 @@ const server = http.createServer(async (req, res) => {
     }
     // static
     let p = u.pathname === "/" ? "/index.html" : u.pathname;
-    const file = path.normalize(path.join(PUB, p));
-    if (!file.startsWith(PUB) || !fs.existsSync(file) || fs.statSync(file).isDirectory())
+    const file = resolvePublicFile(PUB, p);
+    if (!file || !fs.existsSync(file) || fs.statSync(file).isDirectory())
       return json(res, 404, { error: "not found" });
     res.writeHead(200, { "Content-Type": MIME[path.extname(file)] || "application/octet-stream" });
     fs.createReadStream(file).pipe(res);
