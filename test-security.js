@@ -92,7 +92,34 @@ async function waitForServer(base) {
     assert.notEqual(remoteExit, 0, "server must refuse non-loopback binds");
     assert.match(remoteOutput, /local-only/i);
 
-    console.log("Security regression checks passed: env-only credentials, config redaction, local Host guard, and loopback-only bind.");
+    const rejectedCrossOrigin = await fetch(base + "/api/logs", {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: "https://attacker.example" },
+      body: JSON.stringify({ dir: "INTERNAL", source: "test", target: "test", type: "config", payload: "blocked" }),
+    });
+    assert.equal(rejectedCrossOrigin.status, 403, "cross-origin state changes must be rejected");
+
+    const sameOriginMutation = await fetch(base + "/api/logs", {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: base },
+      body: JSON.stringify({ dir: "INTERNAL", source: "test", target: "test", type: "config", payload: "allowed" }),
+    });
+    assert.equal(sameOriginMutation.status, 201, "same-origin local requests must continue to work");
+
+    const oversized = await fetch(base + "/api/logs", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ dir: "INTERNAL", source: "test", target: "test", type: "config", payload: "x".repeat(1_000_100) }),
+    });
+    assert.equal(oversized.status, 413, "oversized request bodies must return HTTP 413");
+
+    const malformedJson = await fetch(base + "/api/logs", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{",
+    });
+    assert.equal(malformedJson.status, 400, "malformed JSON must return HTTP 400");
+    console.log("Security regression checks passed: env-only credentials, redaction, loopback binding, CSRF origin guard, and bounded request bodies.");
   } finally {
     child.kill("SIGTERM");
     await new Promise((resolve) => child.once("exit", resolve));
