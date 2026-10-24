@@ -4,10 +4,18 @@ const http = require("node:http");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { resolvePublicFile } = require("./static-path");
 const { spawn } = require("node:child_process");
 
 const root = __dirname;
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), "saber-security-"));
+const staticRoot = path.join(temp, "public-root");
+fs.mkdirSync(staticRoot);
+assert.equal(resolvePublicFile(staticRoot, "/index.html"), path.join(staticRoot, "index.html"));
+assert.equal(resolvePublicFile(staticRoot, "../public-root-sibling-secret.txt"), null);
+assert.equal(resolvePublicFile(staticRoot, "/%2e%2e/public-root-sibling-secret.txt"), null);
+assert.equal(resolvePublicFile(staticRoot, "/%00secret.txt"), null);
+assert.equal(resolvePublicFile(staticRoot, "/%E0%A4%A"), null);
 const storePath = path.join(temp, "store.json");
 const fixture = JSON.parse(fs.readFileSync(path.join(root, "store.example.json"), "utf8"));
 fixture.config.providers.routerKey = "persisted-router-secret-test";
