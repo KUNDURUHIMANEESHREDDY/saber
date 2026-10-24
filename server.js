@@ -498,11 +498,55 @@ function loadLocalSkills() {
 
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json" };
 
+const MAX_REQUEST_BODY_BYTES = 1_000_000;
+const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+function isAllowedLocalOrigin(origin, requestHost) {
+  try {
+    const parsed = new URL(origin);
+    if (parsed.username || parsed.password || parsed.pathname !== "/" || parsed.search || parsed.hash) return false;
+    const allowed = new Set([
+      `http://${requestHost}`,
+      `http://localhost:${PORT}`,
+      `http://127.0.0.1:${PORT}`,
+      `http://[::1]:${PORT}`,
+    ]);
+    return allowed.has(parsed.origin);
+  } catch {
+    return false;
+  }
+}
+
 function body(req) {
-  return new Promise((res, rej) => {
-    let s = "";
-    req.on("data", (c) => { s += c; if (s.length > 1e6) req.destroy(); });
-    req.on("end", () => { try { res(s ? JSON.parse(s) : {}); } catch { rej(new Error("bad json")); } });
+  return new Promise((resolve, reject) => {
+    let text = "";
+    let size = 0;
+    let tooLarge = false;
+    req.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > MAX_REQUEST_BODY_BYTES) {
+        tooLarge = true;
+        text = "";
+        return;
+      }
+      if (!tooLarge) text += chunk.toString("utf8");
+    });
+    req.on("end", () => {
+      if (tooLarge) {
+        const error = new Error("Request body too large");
+        error.statusCode = 413;
+        reject(error);
+        return;
+      }
+      try {
+        resolve(text ? JSON.parse(text) : {});
+      } catch {
+        const error = new Error("Invalid JSON body");
+        error.statusCode = 400;
+        reject(error);
+      }
+    });
+    req.on("error", reject);
   });
 }
 function json(res, code, obj) {
@@ -514,8 +558,15 @@ const server = http.createServer(async (req, res) => {
   const u = new URL(req.url, "http://x");
   try {
     const requestHost = String(req.headers.host || "").toLowerCase();
-    if (!/^(localhost|127\.0\.0\.1|\[::1\])(?::\d{1,5})?$/.test(requestHost)) {
+    if (!/^(localhost|127\\.0\\.0\\.1|\\[::1\\])(?::\\d{1,5})?$/.test(requestHost)) {
       return json(res, 403, { error: "Local requests only" });
+    }
+    if (MUTATING_METHODS.has(req.method)) {
+      const origin = req.headers.origin;
+      const fetchSite = String(req.headers["sec-fetch-site"] || "").toLowerCase();
+      if ((typeof origin === "string" && !isAllowedLocalOrigin(origin, requestHost)) || fetchSite === "cross-site") {
+        return json(res, 403, { error: "Cross-origin state changes are not allowed" });
+      }
     }
     if (u.pathname === "/api/health") return json(res, 200, { ok: true });
     if (u.pathname === "/api/logs" && req.method === "GET") {
@@ -706,7 +757,9 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200, { "Content-Type": MIME[path.extname(file)] || "application/octet-stream" });
     fs.createReadStream(file).pipe(res);
   } catch (e) {
-    json(res, 500, { error: String(e.message || e) });
+    const status = Number.isInteger(e && e.statusCode) ? e.statusCode : 500;
+    const message = status === 400 ? "Invalid JSON body" : status === 413 ? "Request body too large" : "Internal server error";
+    json(res, status, { error: message });
   }
 });
 
