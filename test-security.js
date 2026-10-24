@@ -16,6 +16,10 @@ assert.equal(resolvePublicFile(staticRoot, "../public-root-sibling-secret.txt"),
 assert.equal(resolvePublicFile(staticRoot, "/%2e%2e/public-root-sibling-secret.txt"), null);
 assert.equal(resolvePublicFile(staticRoot, "/%00secret.txt"), null);
 assert.equal(resolvePublicFile(staticRoot, "/%E0%A4%A"), null);
+const outsideSecret = path.join(temp, "outside-secret.txt");
+fs.writeFileSync(outsideSecret, "must not be served");
+fs.symlinkSync(outsideSecret, path.join(staticRoot, "outside-link.txt"));
+assert.equal(resolvePublicFile(staticRoot, "/outside-link.txt"), null, "symlinks must not expose files outside public root");
 const storePath = path.join(temp, "store.json");
 const fixture = JSON.parse(fs.readFileSync(path.join(root, "store.example.json"), "utf8"));
 fixture.config.providers.routerKey = "persisted-router-secret-test";
