@@ -519,17 +519,17 @@ function isAllowedLocalOrigin(origin, requestHost) {
 
 function body(req) {
   return new Promise((resolve, reject) => {
-    let text = "";
+    const chunks = [];
     let size = 0;
     let tooLarge = false;
     req.on("data", (chunk) => {
       size += chunk.length;
       if (size > MAX_REQUEST_BODY_BYTES) {
         tooLarge = true;
-        text = "";
+        chunks.length = 0;
         return;
       }
-      if (!tooLarge) text += chunk.toString("utf8");
+      if (!tooLarge) chunks.push(chunk);
     });
     req.on("end", () => {
       if (tooLarge) {
@@ -539,6 +539,7 @@ function body(req) {
         return;
       }
       try {
+        const text = Buffer.concat(chunks).toString("utf8");
         resolve(text ? JSON.parse(text) : {});
       } catch {
         const error = new Error("Invalid JSON body");
