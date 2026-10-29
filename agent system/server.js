@@ -183,7 +183,33 @@ try {
   }
 } catch {}
 function persist() {
-  try { fs.writeFileSync(STORE, JSON.stringify(store)); } catch {}
+  // Write a complete snapshot beside the destination, then atomically replace it.
+  // A process interruption must not truncate the only copy of prompts/config.
+  const directory = path.dirname(STORE);
+  const temporary = `${STORE}.${process.pid}.${Date.now()}.tmp`;
+  let descriptor;
+  try {
+    fs.mkdirSync(directory, { recursive: true });
+    descriptor = fs.openSync(temporary, "wx", 0o600);
+    fs.writeFileSync(descriptor, JSON.stringify(store), "utf8");
+    fs.fsyncSync(descriptor);
+    fs.closeSync(descriptor);
+    descriptor = undefined;
+    fs.renameSync(temporary, STORE);
+
+    // Persist the directory entry where supported (Windows may reject directory fsync).
+    try {
+      const directoryDescriptor = fs.openSync(directory, "r");
+      try { fs.fsyncSync(directoryDescriptor); } finally { fs.closeSync(directoryDescriptor); }
+    } catch {}
+  } catch (error) {
+    if (descriptor !== undefined) {
+      try { fs.closeSync(descriptor); } catch {}
+    }
+    try { fs.unlinkSync(temporary); } catch {}
+    // Log only a stable error code; never serialize store contents or credentials.
+    console.error("Failed to persist local store:", error && error.code ? error.code : "unknown error");
+  }
 }
 
 // Older local stores may contain credentials saved by the previous settings UI.
