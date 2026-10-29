@@ -157,7 +157,7 @@ async function waitForServer(base) {
     assert.ok(persistedStore.logs.some((entry) => entry.payload === "allowed"),
       "successful local mutations must survive a full store rewrite");
     assert.deepEqual(
-      fs.readdirSync(temp).filter((name) => /^store\\.json\\..+\\.tmp$/.test(name)),
+      fs.readdirSync(temp).filter((name) => /^store\.json\..+\.tmp$/.test(name)),
       [],
       "successful atomic writes must not leave temporary snapshots behind",
     );
