@@ -1505,12 +1505,12 @@ function renderModelsPane() {
 
   // Provider credentials
   const prov = CFG.providers || {};
-  if ($("#cfg-key-anthropic")) $("#cfg-key-anthropic").value = prov.anthropic || "";
-  if ($("#cfg-key-openai")) $("#cfg-key-openai").value = prov.openai || "";
-  if ($("#cfg-key-deepseek")) $("#cfg-key-deepseek").value = prov.deepseek || "";
+  if ($("#cfg-key-anthropic")) { $("#cfg-key-anthropic").value = ""; $("#cfg-key-anthropic").disabled = true; }
+  if ($("#cfg-key-openai")) { $("#cfg-key-openai").value = ""; $("#cfg-key-openai").disabled = true; }
+  if ($("#cfg-key-deepseek")) { $("#cfg-key-deepseek").value = ""; $("#cfg-key-deepseek").disabled = true; }
   if ($("#cfg-url-ollama")) $("#cfg-url-ollama").value = prov.ollamaUrl || "http://localhost:11434";
   if ($("#cfg-url-router")) $("#cfg-url-router").value = prov.routerUrl || "http://localhost:20128/v1";
-  if ($("#cfg-key-router")) $("#cfg-key-router").value = prov.routerKey || "";
+  if ($("#cfg-key-router")) { $("#cfg-key-router").value = ""; $("#cfg-key-router").disabled = true; }
   updateProviderBadges(prov);
 }
 
@@ -1531,7 +1531,7 @@ function updateProviderBadges(prov) {
   }
   const rBadge = $("#badge-router");
   if (rBadge) {
-    const hasRouter = !!(p.routerUrl && p.routerKey);
+    const hasRouter = !!(p.routerUrl && p.routerKeyConfigured);
     rBadge.textContent = hasRouter ? "Configured" : "Not set";
     rBadge.className = hasRouter ? "badge green" : "badge";
   }

@@ -2,10 +2,39 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const { resolvePublicFile } = require("./static-path");
 
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT || 3000);
+const HOST = process.env.HOST || "127.0.0.1";
+if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
+  throw new Error("PORT must be an integer from 1 to 65535.");
+}
+if (!["127.0.0.1", "::1", "localhost"].includes(HOST)) {
+  throw new Error("SABER is local-only until authenticated remote access is implemented; HOST must be localhost or a loopback address.");
+}
 const PUB = path.join(__dirname, "public");
-const STORE = path.join(__dirname, "store.json");
+const STORE = process.env.SABER_STORE_PATH || path.join(__dirname, "store.json");
+const SECRET_PROVIDER_FIELDS = ["anthropic", "openai", "deepseek", "routerKey"];
+
+function stripProviderSecrets(config) {
+  if (!config.providers || typeof config.providers !== "object") config.providers = {};
+  for (const field of SECRET_PROVIDER_FIELDS) config.providers[field] = "";
+  delete config.providers.routerKeyConfigured;
+  return config;
+}
+
+function publicConfig(config) {
+  const safe = JSON.parse(JSON.stringify(config));
+  stripProviderSecrets(safe);
+  safe.providers.routerKeyConfigured = Boolean(process.env.SABER_ROUTER_KEY);
+  return safe;
+}
+
+function hasProviderSecrets(config) {
+  return SECRET_PROVIDER_FIELDS.some((field) =>
+    typeof config?.providers?.[field] === "string" && config.providers[field].trim().length > 0
+  );
+}
 
 function defCfg() {
   return {
@@ -153,8 +182,40 @@ try {
   }
 } catch {}
 function persist() {
-  try { fs.writeFileSync(STORE, JSON.stringify(store)); } catch {}
+  // Write a complete snapshot beside the destination, then atomically replace it.
+  // A process interruption must not truncate the only copy of prompts/config.
+  const directory = path.dirname(STORE);
+  const temporary = `${STORE}.${process.pid}.${Date.now()}.tmp`;
+  let descriptor;
+  try {
+    fs.mkdirSync(directory, { recursive: true });
+    descriptor = fs.openSync(temporary, "wx", 0o600);
+    fs.writeFileSync(descriptor, JSON.stringify(store), "utf8");
+    fs.fsyncSync(descriptor);
+    fs.closeSync(descriptor);
+    descriptor = undefined;
+    fs.renameSync(temporary, STORE);
+
+    // Persist the directory entry where supported (Windows may reject directory fsync).
+    try {
+      const directoryDescriptor = fs.openSync(directory, "r");
+      try { fs.fsyncSync(directoryDescriptor); } finally { fs.closeSync(directoryDescriptor); }
+    } catch {}
+  } catch (error) {
+    if (descriptor !== undefined) {
+      try { fs.closeSync(descriptor); } catch {}
+    }
+    try { fs.unlinkSync(temporary); } catch {}
+    // Log only a stable error code; never serialize store contents or credentials.
+    console.error("Failed to persist local store:", error && error.code ? error.code : "unknown error");
+  }
 }
+
+// Older local stores may contain credentials saved by the previous settings UI.
+// Keep the user's logs and configuration, but remove provider secrets from disk.
+const hadPersistedProviderSecrets = hasProviderSecrets(store.config);
+stripProviderSecrets(store.config);
+if (hadPersistedProviderSecrets) persist();
 
 const clients = new Set();
 function emit(e) {
@@ -176,6 +237,7 @@ const chatHistory = [];
 async function callLLM(modelNameOrId, prompt, history = []) {
   const cfg = store.config;
   const prov = cfg.providers || {};
+  const routerKey = process.env.SABER_ROUTER_KEY || "";
   const modelObj = (cfg.models && cfg.models.find((m) => m.name === modelNameOrId || m.id === modelNameOrId));
   const primaryId = modelObj ? modelObj.id : (modelNameOrId || "code");
 
@@ -192,7 +254,7 @@ async function callLLM(modelNameOrId, prompt, history = []) {
   if (!candidates.includes("ag/gemini-3.7-flash-high")) candidates.push("ag/gemini-3.7-flash-high");
 
   // 1. AI Router / OpenAI-compatible endpoint
-  if (prov.routerUrl && prov.routerKey) {
+  if (prov.routerUrl && routerKey) {
     for (const candidateModel of candidates) {
       try {
         const url = prov.routerUrl.replace(/\/+$/, "") + "/chat/completions";
@@ -200,7 +262,7 @@ async function callLLM(modelNameOrId, prompt, history = []) {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${prov.routerKey}`,
+            "Authorization": `Bearer ${routerKey}`,
           },
           body: JSON.stringify({
             model: candidateModel,
@@ -463,11 +525,56 @@ function loadLocalSkills() {
 
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json" };
 
+const MAX_REQUEST_BODY_BYTES = 1_000_000;
+const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+function isAllowedLocalOrigin(origin, requestHost) {
+  try {
+    const parsed = new URL(origin);
+    if (parsed.username || parsed.password || parsed.pathname !== "/" || parsed.search || parsed.hash) return false;
+    const allowed = new Set([
+      `http://${requestHost}`,
+      `http://localhost:${PORT}`,
+      `http://127.0.0.1:${PORT}`,
+      `http://[::1]:${PORT}`,
+    ]);
+    return allowed.has(parsed.origin);
+  } catch {
+    return false;
+  }
+}
+
 function body(req) {
-  return new Promise((res, rej) => {
-    let s = "";
-    req.on("data", (c) => { s += c; if (s.length > 1e6) req.destroy(); });
-    req.on("end", () => { try { res(s ? JSON.parse(s) : {}); } catch { rej(new Error("bad json")); } });
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    let tooLarge = false;
+    req.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > MAX_REQUEST_BODY_BYTES) {
+        tooLarge = true;
+        chunks.length = 0;
+        return;
+      }
+      if (!tooLarge) chunks.push(chunk);
+    });
+    req.on("end", () => {
+      if (tooLarge) {
+        const error = new Error("Request body too large");
+        error.statusCode = 413;
+        reject(error);
+        return;
+      }
+      try {
+        const text = Buffer.concat(chunks).toString("utf8");
+        resolve(text ? JSON.parse(text) : {});
+      } catch {
+        const error = new Error("Invalid JSON body");
+        error.statusCode = 400;
+        reject(error);
+      }
+    });
+    req.on("error", reject);
   });
 }
 function json(res, code, obj) {
@@ -478,6 +585,17 @@ function json(res, code, obj) {
 const server = http.createServer(async (req, res) => {
   const u = new URL(req.url, "http://x");
   try {
+    const requestHost = String(req.headers.host || "").toLowerCase();
+    if (!/^(localhost|127\.0\.0\.1|\[::1\])(?::\d{1,5})?$/.test(requestHost)) {
+      return json(res, 403, { error: "Local requests only" });
+    }
+    if (MUTATING_METHODS.has(req.method)) {
+      const origin = req.headers.origin;
+      const fetchSite = String(req.headers["sec-fetch-site"] || "").toLowerCase();
+      if ((typeof origin === "string" && !isAllowedLocalOrigin(origin, requestHost)) || fetchSite === "cross-site") {
+        return json(res, 403, { error: "Cross-origin state changes are not allowed" });
+      }
+    }
     if (u.pathname === "/api/health") return json(res, 200, { ok: true });
     if (u.pathname === "/api/logs" && req.method === "GET") {
       const limit = Math.min(1000, +(u.searchParams.get("limit") || 300));
@@ -488,7 +606,7 @@ const server = http.createServer(async (req, res) => {
       emit({ dir: "INTERNAL", source: "system", target: "system", type: "config", payload: "log cleared" });
       return json(res, 200, { ok: true });
     }
-    if (u.pathname === "/api/config" && req.method === "GET") return json(res, 200, store.config);
+    if (u.pathname === "/api/config" && req.method === "GET") return json(res, 200, publicConfig(store.config));
     if (u.pathname === "/api/skills/library" && req.method === "GET") {
       return json(res, 200, { skills: loadLocalSkills() });
     }
@@ -517,7 +635,7 @@ const server = http.createServer(async (req, res) => {
       }
       persist();
       emit({ dir: "INTERNAL", source: "system", target: "system", type: "config", payload: `skill ${skillId} assigned to ${targetType}:${targetId}` });
-      return json(res, 200, { ok: true, config: store.config, library: loadLocalSkills() });
+      return json(res, 200, { ok: true, config: publicConfig(store.config), library: loadLocalSkills() });
     }
     if (u.pathname === "/api/skills/unassign" && req.method === "POST") {
       const b = await body(req);
@@ -542,7 +660,7 @@ const server = http.createServer(async (req, res) => {
       }
       persist();
       emit({ dir: "INTERNAL", source: "system", target: "system", type: "config", payload: `skill ${skillId} unassigned from ${targetType}:${targetId}` });
-      return json(res, 200, { ok: true, config: store.config, library: loadLocalSkills() });
+      return json(res, 200, { ok: true, config: publicConfig(store.config), library: loadLocalSkills() });
     }
     if (u.pathname === "/api/logs" && req.method === "POST") {
       const b = await body(req);
@@ -553,9 +671,13 @@ const server = http.createServer(async (req, res) => {
     if (u.pathname === "/api/config" && req.method === "PUT") {
       const c = await body(req);
       if (!c || !Array.isArray(c.profiles) || !Array.isArray(c.skills)) return json(res, 400, { error: "bad config" });
-      store.config = c; persist();
+      if (hasProviderSecrets(c)) {
+        return json(res, 400, { error: "Provider credentials cannot be stored in config. Set SABER_ROUTER_KEY in the server environment; direct provider keys are not wired yet." });
+      }
+      store.config = stripProviderSecrets(c);
+      persist();
       emit({ dir: "INTERNAL", source: "system", target: "system", type: "config", payload: "config updated" });
-      return json(res, 200, store.config);
+      return json(res, 200, publicConfig(store.config));
     }
     if (u.pathname === "/api/providers/test-ollama" && req.method === "POST") {
       const b = await body(req).catch(() => ({}));
@@ -574,7 +696,8 @@ const server = http.createServer(async (req, res) => {
     if (u.pathname === "/api/providers/test-router" && req.method === "POST") {
       const b = await body(req).catch(() => ({}));
       const url = String(b.url || (store.config.providers && store.config.providers.routerUrl) || "http://localhost:20128/v1").trim();
-      const key = String(b.key || (store.config.providers && store.config.providers.routerKey) || "").trim();
+      if (String(b.key || "").trim()) return json(res, 400, { ok: false, error: "Set SABER_ROUTER_KEY in the server environment; request-body credentials are not accepted." });
+      const key = process.env.SABER_ROUTER_KEY || "";
       try {
         const pingUrl = url.replace(/\/+$/, "") + "/models";
         const headers = {};
@@ -591,7 +714,8 @@ const server = http.createServer(async (req, res) => {
     if (u.pathname === "/api/providers/sync-router-models" && req.method === "POST") {
       const b = await body(req).catch(() => ({}));
       const url = String(b.url || (store.config.providers && store.config.providers.routerUrl) || "http://localhost:20128/v1").trim();
-      const key = String(b.key || (store.config.providers && store.config.providers.routerKey) || "").trim();
+      if (String(b.key || "").trim()) return json(res, 400, { ok: false, error: "Set SABER_ROUTER_KEY in the server environment; request-body credentials are not accepted." });
+      const key = process.env.SABER_ROUTER_KEY || "";
       try {
         const pingUrl = url.replace(/\/+$/, "") + "/models";
         const headers = {};
@@ -655,14 +779,16 @@ const server = http.createServer(async (req, res) => {
     }
     // static
     let p = u.pathname === "/" ? "/index.html" : u.pathname;
-    const file = path.normalize(path.join(PUB, p));
-    if (!file.startsWith(PUB) || !fs.existsSync(file) || fs.statSync(file).isDirectory())
+    const file = resolvePublicFile(PUB, p);
+    if (!file || !fs.existsSync(file) || fs.statSync(file).isDirectory())
       return json(res, 404, { error: "not found" });
     res.writeHead(200, { "Content-Type": MIME[path.extname(file)] || "application/octet-stream" });
     fs.createReadStream(file).pipe(res);
   } catch (e) {
-    json(res, 500, { error: String(e.message || e) });
+    const status = Number.isInteger(e && e.statusCode) ? e.statusCode : 500;
+    const message = status === 400 ? "Invalid JSON body" : status === 413 ? "Request body too large" : "Internal server error";
+    json(res, status, { error: message });
   }
 });
 
-server.listen(PORT, () => console.log(`harness server on http://localhost:${PORT}`));
+server.listen(PORT, HOST, () => console.log(`harness server on http://${HOST}:${PORT}`));

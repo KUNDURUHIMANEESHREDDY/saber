@@ -1,0 +1,68 @@
+name: CI and Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: local API and settings checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax-check both server copies
+        run: |
+          node --check server.js
+          node --check static-path.js
+          node --check "agent system/server.js"
+          node --check public/overlord.js
+          node --check "agent system/public/overlord.js"
+      - name: Validate settings schema and UI invariants
+        run: node test-settings.js
+      - name: Test secret redaction and local-only binding
+        run: node test-security.js
+
+  secret-scan:
+    name: Git history secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  required:
+    name: required
+    if: always()
+    needs: [verify, secret-scan]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Fail closed on any verification failure
+        env:
+          VERIFY_RESULT: ${{ needs.verify.result }}
+          SECRET_SCAN_RESULT: ${{ needs.secret-scan.result }}
+        run: |
+          set -euo pipefail
+          echo "verify: $VERIFY_RESULT"
+          echo "secret-scan: $SECRET_SCAN_RESULT"
+          test "$VERIFY_RESULT" = "success"
+          test "$SECRET_SCAN_RESULT" = "success"

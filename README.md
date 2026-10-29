@@ -6,9 +6,7 @@ specialist "agents", runs each in sequence, and synthesises a report — streame
 The entire server is **669 lines of Node.js with zero dependencies** (Node builtins only), plus a 2,223-line
 vanilla-JS frontend.
 
-> ⚠️ **Prototype, with real security problems.** 4 commits, all from one afternoon. **A live API key is committed to
-> this public repository** — see [Security](#security-issues). Large parts of the repo are mockups that the server
-> never serves. Read [What is real vs. what is a mockup](#what-is-real-vs-what-is-a-mockup) first.
+> ⚠️ **Prototype; not production-ready.** A prior commit contained a router credential. It was removed from the current tree, but Git history can retain old copies. Rotate/revoke any credential ever committed and review the history. Large parts of the repo are mockups that the server never serves. Read [What is real vs. what is a mockup](#what-is-real-vs-what-is-a-mockup) first.
 
 ---
 
@@ -59,8 +57,7 @@ prompts — nothing calls them.
 
 ## LLM configuration
 
-Config lives in `store.json` → `config`, edited through the Settings UI. **The only environment variable is
-`PORT`.**
+Non-secret settings live in `store.json` → `config`. Provider credentials are environment-only: the supported router key is `SABER_ROUTER_KEY`; direct Anthropic/OpenAI/DeepSeek key fields are not wired and are disabled in the UI. The server binds to loopback (`127.0.0.1`) by default and rejects non-loopback binds until authenticated remote access exists. `PORT` and `SABER_STORE_PATH` can be set for local testing.
 
 There are three call paths, in order:
 
@@ -170,27 +167,23 @@ under `demos/` return `{"error":"not found"}` when opened over HTTP. They work o
 
 ## Security issues
 
-**1. A live API key was committed.** A router key was hardcoded at `server.js:116` and `server.js:133`, and
-present in `store.json` and the stale `agent system/` copy. All four are removed in `f18d180`. It was published in
-a public repository, so **rotate that key regardless** — removing it from HEAD does not remove it from git history.
+**1. Historical credential exposure.** A prior commit contained a router key and commit `f18d180` removed it from the current tree. History may still contain old copies, so rotate/revoke that credential and never reuse it. This PR does not rewrite history.
 
-**2. `GET /api/config` returns every provider key with no authentication**, and the server binds all interfaces
-(no host argument on `listen()`).
+**2. API exposure.** The server now defaults to loopback, refuses non-loopback binds, rejects non-local Host headers, and redacts provider credentials from config responses. This is not remote authentication.
 
-**3. `store.json` is tracked and rewritten on every single event**, and there is **no `.gitignore`**. It holds the
-API key plus up to 1,000 user prompts and responses in plaintext. Anyone who runs this and commits commits their
-conversation history and key.
+**3. Credential storage.** The supported router key is read from `SABER_ROUTER_KEY`; provider keys are stripped from existing local stores and rejected on config writes. Direct Anthropic/OpenAI/DeepSeek provider keys remain unwired and disabled in the UI.
 
-**4. Not fully offline.** `public/index.html` loads Tabler icons from `cdn.jsdelivr.net`. All icons break without
-internet access — despite `demos/index.html` advertising "No backend, no CDN".
+**4. Tracked runtime state.** The root `store.json` is ignored, but the legacy `agent system/store.json` remains tracked and contains prompts/run logs. It is preserved by this change to avoid deleting user data. Review retention and migrate it out of Git before production.
 
-The path-traversal guard is correct (`server.js:660`), and the request body is capped at 1 MB.
+**5. No user authentication.** The API remains intended for one local user. Loopback binding reduces accidental network exposure but does not make this a multi-user or remotely hosted service.
+
+**6. External assets.** `public/index.html` still loads Tabler icons from a CDN, so icons require internet access.
 
 ---
 
 ## Tests
 
-One file, no framework, no runner: `test-settings.js` (110 lines). It asserts on the shape of `store.json`
+Two dependency-free Node checks run in CI: `test-settings.js` validates settings/UI invariants, and `test-security.js` checks credential redaction, local Host validation, and loopback-only binding. It asserts on the shape of `store.json`
 config, greps `public/index.html` for required CSS selectors and DOM ids, syntax-checks `overlord.js` via
 `node -c`, and does string-presence checks on `server.js` source.
 
