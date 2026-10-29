@@ -153,6 +153,14 @@ async function waitForServer(base) {
       body: JSON.stringify({ dir: "INTERNAL", source: "test", target: "test", type: "config", payload: "allowed" }),
     });
     assert.equal(sameOriginMutation.status, 201, "same-origin local requests must continue to work");
+    const persistedStore = JSON.parse(fs.readFileSync(storePath, "utf8"));
+    assert.ok(persistedStore.logs.some((entry) => entry.payload === "allowed"),
+      "successful local mutations must survive a full store rewrite");
+    assert.deepEqual(
+      fs.readdirSync(temp).filter((name) => /^store\\.json\\..+\\.tmp$/.test(name)),
+      [],
+      "successful atomic writes must not leave temporary snapshots behind",
+    );
 
     const oversized = await fetch(base + "/api/logs", {
       method: "POST",
