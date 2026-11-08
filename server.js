@@ -3,6 +3,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const { resolvePublicFile } = require("./static-path");
+const { runBackgroundTask } = require("./background-task");
 
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || "127.0.0.1";
@@ -757,7 +758,20 @@ const server = http.createServer(async (req, res) => {
       const goal = (b.goal || "").trim();
       if (!goal) return json(res, 400, { error: "goal required" });
       const runId = "r" + Date.now().toString(36) + "-" + runN;
-      runSim(goal, b.model);
+      void runBackgroundTask(
+        () => runSim(goal, b.model),
+        () => {
+          // Do not log provider responses, prompts, or exception text: they may contain secrets.
+          console.error("Background run failed; details redacted.");
+          emit({
+            dir: "INTERNAL",
+            source: "supervisor",
+            target: "user",
+            type: "error",
+            payload: "This run failed unexpectedly. Check server logs and provider connectivity.",
+          });
+        },
+      );
       return json(res, 202, { runId, status: "started" });
     }
     const m = u.pathname.match(/^\/api\/runs\/([^/]+)\/approve$/);
