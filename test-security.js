@@ -80,16 +80,17 @@ async function waitForServer(base) {
 }
 
 (async () => {
-  const reportedFailure = await runBackgroundTask(
+  let reportedMessage;
+  await runBackgroundTask(
     () => Promise.reject(new Error("simulated provider failure")),
-    (error) => error.message,
+    (error) => { reportedMessage = error.message; },
   );
   // Error callbacks are notification-only; the helper must not leak a second rejection.
   const callbackFailure = await runBackgroundTask(
     () => Promise.reject(new Error("simulated task failure")),
     () => { throw new Error("simulated reporting failure"); },
   );
-  assert.equal(reportedFailure, undefined, "background task failures must be handled");
+  assert.equal(reportedMessage, "simulated provider failure", "background failures must reach the safe notification callback");
   assert.equal(callbackFailure, undefined, "reporting failures must not create unhandled rejections");
 
   const base = "http://127.0.0.1:" + port;
