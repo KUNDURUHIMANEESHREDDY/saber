@@ -5,6 +5,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { resolvePublicFile } = require("./static-path");
+const { runBackgroundTask } = require("./background-task");
 const { spawn } = require("node:child_process");
 
 const root = __dirname;
@@ -79,6 +80,18 @@ async function waitForServer(base) {
 }
 
 (async () => {
+  const reportedFailure = await runBackgroundTask(
+    () => Promise.reject(new Error("simulated provider failure")),
+    (error) => error.message,
+  );
+  // Error callbacks are notification-only; the helper must not leak a second rejection.
+  const callbackFailure = await runBackgroundTask(
+    () => Promise.reject(new Error("simulated task failure")),
+    () => { throw new Error("simulated reporting failure"); },
+  );
+  assert.equal(reportedFailure, undefined, "background task failures must be handled");
+  assert.equal(callbackFailure, undefined, "reporting failures must not create unhandled rejections");
+
   const base = "http://127.0.0.1:" + port;
   try {
     await waitForServer(base);
